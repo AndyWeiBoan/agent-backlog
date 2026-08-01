@@ -29,6 +29,9 @@
 | `scripts/add.sh` | 10 | 建立待辦 |
 | `scripts/dispatch.sh` | 60 | 派工：啟動 claude 並把內容貼進去 |
 | `scripts/preview_pane.sh` | 5 | 預覽窗格：從 fifo 讀內容印出來 |
+| `scripts/mcp-server.sh` | 約 190 | MCP server（stdio JSON-RPC），給 agent 用 |
+| `scripts/mcp/json_get.awk` | 140 | JSON → `路徑<TAB>值`，含 `\uXXXX` 還原 |
+| `scripts/mcp/json_str.awk` | 14 | 字串 → JSON 跳脫 |
 
 依賴：`tmux` `sh` `awk` `stty` `dd` `od` `sed` `cut` `mkfifo` —— 全部 POSIX。
 沒有 node、python、fzf、jq。
@@ -90,6 +93,24 @@ tmux set-option -w -t "$MYWIN" key-table agent-backlog
 
 挑鍵閃避是沒有用的 —— 下一台機器就是另一組 config。`prefix` 不受影響，
 所以 `prefix + ⌥←→` 調寬度、`prefix d` 卸離都還能用。
+
+## MCP 也是零依賴的
+
+MCP 的 stdio transport 就是換行分隔的 JSON-RPC 2.0。難點不在協定，在 JSON：
+
+| | 難度 |
+|---|---|
+| **產生** JSON | 容易。跳脫規則固定，非 ASCII 原樣輸出（JSON 本來就是 UTF-8），中文完全不用特別處理 |
+| **解析** JSON | 真問題。但我們只需要 `.id` `.method` `.params.name` `.params.arguments.*` 這幾個路徑，範圍有界 |
+
+`json_get.awk` 是個小型 tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`。
+一個必須做對的地方是 **`\uXXXX` 還原**：有些 client（Python 的 `json.dumps`
+預設 `ensure_ascii=True`）會把中文全部逃逸，不還原的話整段內容變問號。
+碼位轉 UTF-8 在 gawk（逐字元）與 BWK/busybox（逐位元組）行為不同，
+所以用 `length("錢")==1` 分流。
+
+實測：中文、emoji（含代理對）、引號、反引號、反斜線、換行，
+在三種 awk 上都能完整往返，並且**用真的 Claude Code client 驗過握手與帶參數的呼叫**。
 
 ## 效能
 

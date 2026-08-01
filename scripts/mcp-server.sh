@@ -1,0 +1,193 @@
+#!/bin/sh
+# agent-backlog 的 MCP server（stdio transport），零依賴。
+#
+# 存在的理由跟功能無關：同樣的事用 shell script 就做得到，但**新的 Claude Code
+# session 不會知道那些 script 存在**。註冊成 MCP 之後每個 session 啟動就載入
+# tool 與說明，agent 自己就知道有這份清單、知道能派工。買的是「可發現性」。
+#
+# 協定：換行分隔的 JSON-RPC 2.0。一行進、一行出。
+# JSON 產生很單純（跳脫規則固定、非 ASCII 原樣輸出）；
+# 解析交給 mcp/json_get.awk，它只認我們要的那幾個路徑。
+#
+# ⚠️ stdout 只能有 JSON-RPC 訊息，任何除錯輸出都要走 stderr。
+
+set -u
+DIR=$(cd "$(dirname "$0")" && pwd)
+. "$DIR/lib.sh"
+MCP="$DIR/mcp"
+PROTOCOL=2025-06-18
+
+TMP=$(mktemp -d /tmp/ab-mcp.XXXXXX)
+trap 'rm -rf "$TMP"' EXIT INT TERM HUP QUIT
+FIELDS="$TMP/fields"
+BUF="$TMP/buf"
+
+# ── JSON 小工具 ───────────────────────────────────────
+esc() { awk -f "$MCP/json_str.awk"; }              # stdin → 跳脫後的字串內容
+escs() { printf '%s' "$1" | esc; }                 # 單一參數版
+
+# ── 回應 ──────────────────────────────────────────────
+reply() { printf '{"jsonrpc":"2.0","id":%s,%s}\n' "$1" "$2"; }
+
+reply_text() {                                     # $1=id $2=內容檔 $3=isError
+    printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"' "$1"
+    esc < "$2"
+    printf '"}]%s}}\n' "$([ "${3:-}" = 1 ] && printf ',"isError":true')"
+}
+
+reply_err() {                                      # $1=id $2=code $3=訊息
+    printf '{"jsonrpc":"2.0","id":%s,"error":{"code":%s,"message":"%s"}}\n' \
+        "$1" "$2" "$(escs "$3")"
+}
+
+INSTRUCTIONS='共享的待辦清單。使用者與 agent 看到同一份。
+
+一則待辦 = 一個 tmux window：window 名稱是標題，內容存在 window 的
+@agent_backlog_prompt 上。因此「待辦」與「執行它的地方」是同一個物件，
+沒有兩份狀態要同步。
+
+這不是 Claude Code 內建的 TodoWrite。內建那份是單一 session 內的步驟追蹤；
+這份是使用者也看得到、可以派給其他 Claude Code 實例執行、
+而且使用者能 attach 進去接手的工作項目。
+
+典型用法：討論中冒出「這件事該做」時用 add 記下來；主 agent 用 list 掌握全局，
+決定哪些自己做、哪些用 dispatch 派給獨立實例；用 peek 看派出去的進度。'
+
+# 工具定義。刻意沒有 delete —— 刪除是人的動作，agent 不代勞。
+tools_json() {
+    cat <<'JSON'
+[
+{"name":"list","description":"列出全部待辦：id / 狀態 / 標題 / 該 window 目前跑什麼程式。「裡面在跑」是 tmux 直接回報的現實（shell = 還沒開始），不是記錄值。統籌分配前先看這個。","inputSchema":{"type":"object","properties":{}}},
+{"name":"show","description":"讀某一則的完整內容。target 可以是標題或 window_id（@數字）。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
+{"name":"add","description":"新增一則待辦。建立 detached window 並存內容，不會啟動 claude。","inputSchema":{"type":"object","properties":{"title":{"type":"string","description":"標題，會成為 window 名稱"},"body":{"type":"string","description":"內容（markdown）。派工時直接當 prompt"}},"required":["title","body"]}},
+{"name":"dispatch","description":"派工：在該 window 啟動獨立的 claude 實例並把內容送進去，狀態轉 running。使用者可以 attach 進去接手。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
+{"name":"peek","description":"capture 該 window 目前的畫面，用來看派出去的進度。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
+{"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}}
+]
+JSON
+}
+
+# ── 把 target（標題或 window_id）解析成 window_id ─────
+resolve() {
+    case $1 in
+        @*) printf '%s' "$1"; return ;;
+    esac
+    ab_items | awk -F'\t' -v n="$1" '$3==n {print $1; exit}'
+}
+
+have_server() { tmux list-sessions >/dev/null 2>&1; }
+
+# ── 主迴圈 ────────────────────────────────────────────
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    printf '%s\n' "$line" | awk -f "$MCP/json_get.awk" > "$FIELDS"
+    get() { awk -F'\t' -v k="$1" '$1==k {sub(/^[^\t]*\t/, ""); print; exit}' "$FIELDS"; }
+
+    id=$(get .id)
+    method=$(get .method)
+
+    # 通知（沒有 id）不回應
+    if [ -z "$id" ]; then
+        continue
+    fi
+
+    case $method in
+        initialize)
+            printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"%s","capabilities":{"tools":{}},"serverInfo":{"name":"agent-backlog","version":"0.1.0"},"instructions":"' \
+                "$id" "$PROTOCOL"
+            printf '%s' "$INSTRUCTIONS" | esc
+            printf '"}}\n'
+            ;;
+        ping)
+            reply "$id" '"result":{}'
+            ;;
+        tools/list)
+            printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":%s}}\n' \
+                "$id" "$(tools_json | tr -d '\n')"
+            ;;
+        tools/call)
+            name=$(get .params.name)
+            if ! have_server; then
+                printf '%s' "agent-backlog: tmux server 沒有在執行。待辦存在 tmux window 上，請先啟動 tmux。" > "$BUF"
+                reply_text "$id" "$BUF" 1
+                continue
+            fi
+            case $name in
+                list)
+                    if [ -z "$(ab_items)" ]; then
+                        printf '%s' "目前沒有待辦。" > "$BUF"
+                    else
+                        # 不要用 `read` 切 tab 分隔的欄位 —— tab 屬於 IFS whitespace，
+                        # 連續兩個會被併成一個，空的狀態欄會讓整排跑位。用 awk 切。
+                        # 順便把 pane_current_command 一起在 tmux 那邊取回來，省掉逐則查詢。
+                        tmux list-windows -a \
+                            -f "#{!=:#{$K_PROMPT},}" \
+                            -F "#{window_id}${US}#{$K_STATUS}${US}#{pane_current_command}${US}#{window_name}" \
+                        | awk -F"$US" '{printf "%s  %-8s %s  (%s)\n", $1, ($2==""?"-":$2), $4, $3}' \
+                            > "$BUF"
+                    fi
+                    reply_text "$id" "$BUF"
+                    ;;
+                show)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        ab_prompt "$wid" > "$BUF"
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                add)
+                    title=$(get .params.arguments.title)
+                    # body 裡的換行在解析時被壓成字面的 \n，這裡還原回真的換行
+                    get .params.arguments.body | awk '{gsub(/\\n/, "\n"); print}' > "$TMP/body"
+                    wid=$(tmux new-window -d -n "$title" -P -F '#{window_id}')
+                    tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
+                    tmux set-option -w -t "$wid" "$K_STATUS" pending
+                    printf '已新增 %s（%s）' "$title" "$wid" > "$BUF"
+                    reply_text "$id" "$BUF"
+                    ;;
+                dispatch)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        sh "$DIR/dispatch.sh" "$wid" >/dev/null 2>&1 &
+                        printf '已派工給 %s。用 peek 看進度。' "$wid" > "$BUF"
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                peek)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        tmux capture-pane -pt "$wid" > "$BUF" 2>/dev/null
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                set_status)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    st=$(get .params.arguments.status)
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        tmux set-option -w -t "$wid" "$K_STATUS" "$st"
+                        printf '%s 狀態改為 %s' "$wid" "$st" > "$BUF"
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                *)
+                    reply_err "$id" -32602 "沒有這個工具：$name"
+                    ;;
+            esac
+            ;;
+        *)
+            reply_err "$id" -32601 "不支援的方法：$method"
+            ;;
+    esac
+done

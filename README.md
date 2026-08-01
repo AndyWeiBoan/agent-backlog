@@ -93,6 +93,22 @@ set -g @agent_backlog_no_key on
 bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh"
 ```
 
+## 給 agent 用（MCP）
+
+```sh
+claude mcp add agent-backlog -- sh ~/3rd-party/agent-backlog/scripts/mcp-server.sh
+```
+
+**MCP server 也是零依賴的**（POSIX sh ＋ awk），不需要 node。
+工具：`list` `show` `add` `dispatch` `peek` `set_status`。
+刻意沒有 `delete` —— 刪除是人的動作，agent 不代勞。
+
+註冊的理由跟功能無關：同樣的事用 shell script 就做得到，但新的 Claude Code
+session 不會知道那些 script 存在。**買的是可發現性。**
+
+> MCP server 連的是「環境變數指到的那台 tmux」。`$TMUX` 會蓋過 `$TMUX_TMPDIR`，
+> 所以從 tmux 裡啟動的 client，它的 MCP server 連的就是同一台 —— 這通常正是你要的。
+
 ## 從舊版 action-items 遷移
 
 舊版用的是沒有 namespace 的 `@prompt` / `@status`，新版用
@@ -128,6 +144,8 @@ tmux list-windows -a -f '#{!=:#{@agent_backlog_prompt},}' \
 - **範圍是同一台機器的同一個 tmux server**，不跨機器
 - `md.awk` 不 render 表格（要算 East Asian Width）
 - 派工需要 `claude` 在**那個 pane 的互動 shell** 的 PATH 裡
+- MCP 的 JSON 解析器只認得協定實際用到的那些欄位，不是通用 JSON 函式庫；
+  JSON-RPC 的 batch（頂層陣列）不支援
 
 ## 移除
 
