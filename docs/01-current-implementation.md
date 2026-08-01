@@ -227,6 +227,18 @@ tmux set-option -w -t "$MYWIN" key-table agent-backlog
 
 其他相關的：
 
+- **訊號的 `trap` 執行完會「繼續往下跑」，不會自己結束。** 只寫
+  `trap cleanup HUP` 等於把「終端機關掉就結束」這個預設行為拆掉，
+  然後主迴圈會對著已死的 tty 空轉。實測後果：**20 個孤兒行程、11% CPU、
+  最久跑了 1 小時 48 分**。訊號的 handler 一定要自己 `exit`：
+
+  ```sh
+  trap cleanup EXIT
+  trap 'cleanup; exit 130' INT TERM HUP QUIT
+  ```
+
+- **阻塞式讀取讀到空的 = tty 沒了**。要當結束條件處理，否則就是無窮迴圈。
+  但也可能只是被訊號打斷（`SIGWINCH`），所以連續數次才認定
 - **`key-table` 是 session 層級的選項**。`set -w` / `set -p` 都會被 tmux 悄悄轉成
   session，所以它**不會隨著你的 window 一起消失**。用完沒還原的話，整個 session
   從此跳過 root 表，使用者的 `C-p` `C-t` `C-d` 全部失效，而且完全看不出原因。

@@ -40,8 +40,14 @@ cleanup() {
     rm -rf "$TMP"
 }
 # HUP 一定要攔：tmux kill-window 送的就是 SIGHUP，漏掉的話收尾完全不會跑
-# （實測後果：/tmp/ab.* 一直累積、client-resized hook 留著指向死掉的 pane）
-trap cleanup EXIT INT TERM HUP QUIT
+# （實測後果：/tmp/ab.* 一直累積、hook 留著指向死掉的 pane）。
+#
+# ⚠️ 但訊號的 trap 執行完會「繼續往下跑」，不會自己結束 ——
+# 只寫 `trap cleanup HUP` 等於把「終端機關掉就結束」這個預設行為拆掉，
+# 然後主迴圈會對著已死的 tty 空轉。實測後果：20 個孤兒行程、11% CPU。
+# 訊號的 handler 一定要自己 exit。
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM HUP QUIT
 
 finish() {
     cleanup
@@ -384,9 +390,18 @@ draw_preview
 
 stty raw -echo
 
+eof=0
 while :; do
     batch=$(readbytes)
-    [ -z "$batch" ] && continue
+    # 阻塞模式下讀到空的，通常代表 tty 已經沒了（EOF）。
+    # 但也可能只是被訊號打斷（例如 SIGWINCH），所以連續幾次才認定。
+    # 不做這個防護的話，tty 一消失就是無窮迴圈。
+    if [ -z "$batch" ]; then
+        eof=$((eof + 1))
+        [ "$eof" -ge 50 ] && exit 0
+        continue
+    fi
+    eof=0
     process $batch          # 不加引號：靠 IFS 切成一個個位元組值
 
     if [ "$DIRTY" = 1 ]; then
