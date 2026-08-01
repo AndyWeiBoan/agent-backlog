@@ -46,6 +46,14 @@ nokey=$(tmux show-options -gqv '@agent_backlog_no_key')
 
 if [ "$nokey" != "on" ]; then
     tmux bind-key "$key" run-shell "sh '$DIR/scripts/open.sh'"
+    # tmux 的鍵是區分大小寫的 —— 綁了 A，按 a 不會有任何反應，
+    # 而且完全沒有錯誤訊息，看起來就像壞掉。單一字母就兩個大小寫都綁。
+    case $key in
+        [A-Za-z])
+            alt=$(printf '%s' "$key" | tr 'A-Za-z' 'a-zA-Z')
+            tmux bind-key "$alt" run-shell "sh '$DIR/scripts/open.sh'"
+            ;;
+    esac
 fi
 
 # 給使用者自己綁用的：run-shell "sh #{@agent_backlog_path}/scripts/open.sh"

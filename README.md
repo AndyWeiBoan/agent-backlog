@@ -51,7 +51,7 @@ run-shell ~/3rd-party/agent-backlog/agent-backlog.tmux
 
 ## 用法
 
-`prefix + A` 開清單。
+`prefix + A` 開清單（大小寫都綁了 —— tmux 的鍵區分大小寫，只綁一個的話按錯就完全沒反應，也沒有錯誤訊息）。
 
 | 鍵 | 動作 |
 |---|---|
