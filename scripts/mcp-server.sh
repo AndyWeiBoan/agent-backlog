@@ -120,9 +120,8 @@ while IFS= read -r line; do
                         # 不要用 `read` 切 tab 分隔的欄位 —— tab 屬於 IFS whitespace，
                         # 連續兩個會被併成一個，空的狀態欄會讓整排跑位。用 awk 切。
                         # 順便把 pane_current_command 一起在 tmux 那邊取回來，省掉逐則查詢。
-                        tmux list-windows -a \
-                            -f "#{!=:#{$K_PROMPT},}" \
-                            -F "#{window_id}${US}#{$K_STATUS}${US}#{pane_current_command}${US}#{window_name}" \
+                        tmux list-windows -a -f "$AB_FILTER" \
+                            -F "#{window_id}${US}${AB_STATUS_F}${US}#{pane_current_command}${US}#{window_name}" \
                         | awk -F"$US" '{printf "%s  %-8s %s  (%s)\n", $1, ($2==""?"-":$2), $4, $3}' \
                             > "$BUF"
                     fi
@@ -176,7 +175,7 @@ while IFS= read -r line; do
                         printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
                         reply_text "$id" "$BUF" 1
                     else
-                        tmux set-option -w -t "$wid" "$K_STATUS" "$st"
+                        ab_set_status "$wid" "$st"
                         printf '%s 狀態改為 %s' "$wid" "$st" > "$BUF"
                         reply_text "$id" "$BUF"
                     fi

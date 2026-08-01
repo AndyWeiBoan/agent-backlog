@@ -16,14 +16,44 @@ K_WIDTH="@${PREFIX}_width"       # 左窗格寬度，記住使用者調過的
 # 欄位；這裡 awk 用明確分隔符 split、shell 用 cut -d，都不會併。
 US=$(printf '\t')
 
+# ── 相容模式 ──────────────────────────────────────────
+# @agent_backlog_compat = on 時，連舊版 action-items 的 @prompt / @status 也一起認。
+#
+# 為什麼需要：新舊並行時如果各存各的 key，同一則待辦就有兩份狀態，
+# 改了一邊另一邊不會動，很快就分岔。相容模式讓兩套讀同一份資料 ——
+# 舊的那些留在舊 key 上不動，新版直接讀它，狀態也寫回原本的 key。
+# 這樣「切換」就只是換一個鍵按，不是資料遷移。
+AB_COMPAT=$(tmux show-options -gqv "@${PREFIX}_compat" 2>/dev/null)
+
+if [ "$AB_COMPAT" = on ]; then
+    AB_FILTER="#{||:#{!=:#{$K_PROMPT},},#{!=:#{@prompt},}}"
+    AB_PROMPT_F="#{?#{$K_PROMPT},#{$K_PROMPT},#{@prompt}}"
+    AB_STATUS_F="#{?#{$K_STATUS},#{$K_STATUS},#{@status}}"
+else
+    AB_FILTER="#{!=:#{$K_PROMPT},}"
+    AB_PROMPT_F="#{$K_PROMPT}"
+    AB_STATUS_F="#{$K_STATUS}"
+fi
+
 # 列出所有待辦：window_id US 狀態 US 標題
 ab_items() {
-    tmux list-windows -a \
-        -f "#{!=:#{${K_PROMPT}},}" \
-        -F "#{window_id}${US}#{${K_STATUS}}${US}#{window_name}"
+    tmux list-windows -a -f "$AB_FILTER" \
+        -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
 }
 
-# 取某則的原始 markdown
+# 取某則的原始 markdown。
+# 用 display -p 而不是 show-options -v，因為要讓 format 決定讀哪個 key。
+# 實測多行內容、引號、反引號都與 show-options 逐位元組相同。
 ab_prompt() {
-    tmux show-options -w -v -t "$1" "$K_PROMPT" 2>/dev/null
+    tmux display -p -t "$1" "$AB_PROMPT_F" 2>/dev/null
+}
+
+# 寫狀態。相容模式下要寫回「這則原本用的那個 key」，否則就分岔了。
+ab_set_status() {
+    if [ "$AB_COMPAT" = on ] &&
+       [ -z "$(tmux show-options -w -qv -t "$1" "$K_PROMPT" 2>/dev/null)" ]; then
+        tmux set-option -w -t "$1" @status "$2" 2>/dev/null
+    else
+        tmux set-option -w -t "$1" "$K_STATUS" "$2" 2>/dev/null
+    fi
 }

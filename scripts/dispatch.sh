@@ -70,5 +70,5 @@ rm -f "$f"
 sleep 1
 tmux send-keys -t "$id" Enter
 
-tmux set-option -w -t "$id" "$K_STATUS" running
+ab_set_status "$id" running
 tmux display-message -d 3000 "agent-backlog: 已派工給 $(tmux display -p -t "$id" '#{window_name}')"

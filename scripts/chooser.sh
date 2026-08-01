@@ -223,7 +223,7 @@ dispatch() {
 cycle_status() {
     id=$(selected_id)
     [ -z "$id" ] && return
-    cur=$(tmux show-options -w -qv -t "$id" "$K_STATUS" 2>/dev/null)
+    cur=$(ab_items | awk -F"$US" -v w="$id" '$1==w {print $2; exit}')
     case $cur in
         pending) next=blocked ;;
         blocked) next=done ;;
@@ -231,7 +231,7 @@ cycle_status() {
         running) next=done ;;
         *)       next=pending ;;
     esac
-    tmux set-option -w -t "$id" "$K_STATUS" "$next" 2>/dev/null
+    ab_set_status "$id" "$next"
     refresh_items
     DIRTY=1
 }

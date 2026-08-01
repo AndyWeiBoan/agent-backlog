@@ -85,6 +85,7 @@ prod 上 KYC 縮圖開不出來，7d 82 筆。' | sh scripts/add.sh prod-kyc-thu
 |---|---|---|
 | `@agent_backlog_key` | `A` | 開清單的鍵（在 prefix 之後） |
 | `@agent_backlog_no_key` | — | 設 `on` 就完全不綁鍵，自己綁 |
+| `@agent_backlog_compat` | — | 設 `on` 就連舊版的 `@prompt` / `@status` 一起認 |
 
 自己綁的話，路徑可以從 `@agent_backlog_path` 拿：
 
@@ -109,18 +110,42 @@ session 不會知道那些 script 存在。**買的是可發現性。**
 > MCP server 連的是「環境變數指到的那台 tmux」。`$TMUX` 會蓋過 `$TMUX_TMPDIR`，
 > 所以從 tmux 裡啟動的 client，它的 MCP server 連的就是同一台 —— 這通常正是你要的。
 
-## 從舊版 action-items 遷移
+## 新舊並行與切換
 
-舊版用的是沒有 namespace 的 `@prompt` / `@status`，新版用
-`@agent_backlog_prompt` / `@agent_backlog_status`。
+舊版 action-items 用沒有 namespace 的 `@prompt` / `@status`，新版用
+`@agent_backlog_prompt` / `@agent_backlog_status`。兩套可以同時活在
+同一個 tmux server 上 —— 不同的鍵、不同的 MCP 名稱、不同的 option key。
 
-```sh
-sh scripts/migrate.sh
+**建議：先開相容模式試用，不要急著遷移。**
+
+```tmux
+set -g @agent_backlog_compat on
 ```
 
-**刻意不刪舊 key** —— 新舊兩套可以同時活在同一個 tmux server 上，
-互不干擾（filter 各看各的 key），回滾只是「不按那個鍵」。
-確認新版穩了之後再自己清掉舊 key。
+相容模式下新版**連舊 key 也一起讀**，狀態改動也寫回原本那個 key。
+所以兩套看的是同一份資料，不會分岔；「切換」就只是換一個鍵按。
+
+| 做法 | 新版看得到舊資料 | 會不會分岔 | 什麼時候用 |
+|---|---|---|---|
+| 什麼都不做 | ❌ | — | 只想看新 UI 長怎樣 |
+| `@agent_backlog_compat on` | ✅ | ❌ 同一份 | **試用期（推薦）** |
+| `sh scripts/migrate.sh` | ✅ | ⚠️ 兩份 | 決定要換過去了 |
+
+`migrate.sh` 會把舊 key 複製一份到新 key，**刻意不刪舊的**。
+但複製之後就是兩份資料了 —— 兩邊各改各的不會同步。
+所以它是「確定要搬家」時才跑的，跑完接著把舊的整套停掉。
+
+完全換過去之後清掉舊 key：
+
+```sh
+tmux list-windows -a -f '#{!=:#{@prompt},}' -F '#{window_id}' | while read -r w; do
+    tmux set-option -wu -t "$w" @prompt
+    tmux set-option -wu -t "$w" @status
+done
+```
+
+回滾永遠只是「不按那個鍵」—— 把 `.tmux.conf` 裡的 `run-shell` 那行拿掉，
+或 `tmux unbind A`。
 
 ## 資料存在哪
 
