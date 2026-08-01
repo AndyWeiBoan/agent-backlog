@@ -227,6 +227,11 @@ tmux set-option -w -t "$MYWIN" key-table agent-backlog
 
 其他相關的：
 
+- **`key-table` 是 session 層級的選項**。`set -w` / `set -p` 都會被 tmux 悄悄轉成
+  session，所以它**不會隨著你的 window 一起消失**。用完沒還原的話，整個 session
+  從此跳過 root 表，使用者的 `C-p` `C-t` `C-d` 全部失效，而且完全看不出原因。
+  一定要存舊值、離開時還原；另外掛 `after-select-window` hook，讓使用者切到
+  別的 window 時 root 表也還回去
 - **tmux 的鍵綁定區分大小寫**。`bind-key A` 之後按 `a` 完全沒反應，而且**不會有任何
   錯誤訊息** —— 看起來就像整個 plugin 壞掉。單一字母的鍵兩個大小寫都綁
 - **`C-s` 是 XOFF**（軟體流量控制）。還沒進 raw 模式的那一層終端機會吃掉它並凍住輸出 ——

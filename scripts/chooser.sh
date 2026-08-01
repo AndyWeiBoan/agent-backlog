@@ -23,6 +23,7 @@ mkfifo "$FIFO"
 
 LPANE=$TMUX_PANE
 MYWIN=$(tmux display -p -t "$LPANE" '#{window_id}')
+SESS=$(tmux display -p -t "$LPANE" '#{session_id}')
 STTY_SAVE=$(stty -g)
 RPANE=""
 TARGET=""
@@ -31,6 +32,8 @@ TARGET=""
 # raw 模式沒還原的話，離開後終端機是廢的，所以 trap 從第一天就要有。
 cleanup() {
     stty "$STTY_SAVE" 2>/dev/null
+    kt_off 2>/dev/null
+    tmux set-hook -t "$SESS" -u after-select-window 2>/dev/null
     for _hk in client-resized client-attached client-detached after-resize-pane; do
         tmux set-hook -gu "$_hk" 2>/dev/null
     done
@@ -87,15 +90,32 @@ fi
 # resize 之後 tmux 不會重排已經印出的內容（實測：直接截掉），所以要重印。
 # hook 是另一個行程，沒辦法叫醒卡在 dd 的迴圈 —— 改成送一個 C-l 給我們自己，
 # 迴圈讀到就重量尺寸並重畫。
-# 讓這個 window 跳過使用者的 root key table。
+# 讓按鍵跳過使用者的 root key table。
 #
-# 沒有這行的話，使用者 ~/.tmux.conf 裡任何 `bind -n` 都會在按鍵到達我們之前
+# 沒有這段的話，使用者 ~/.tmux.conf 裡任何 `bind -n` 都會在按鍵到達我們之前
 # 攔走（實際遇到的：C-d 開分割、C-p 選 session、C-t 開新 window、C-s 分割、
 # C-w 殺 pane、M-方向鍵切窗格）。挑鍵閃避沒有用 —— 下一台機器就是另一組 config。
-#
 # 指到一張不存在的表就等於「什麼都沒綁」，所有按鍵直接落到程式手上。
-# prefix 不受影響，所以 prefix + ⌥←→ 調寬度、prefix d 卸離都還能用。
-tmux set-option -w -t "$MYWIN" key-table agent-backlog 2>/dev/null
+#
+# ⚠️ key-table 是 **session 層級**的選項。`set -w` / `set -p` 都會被 tmux
+# 悄悄轉成 session —— 所以它不會隨著我們的 window 一起消失。
+# 沒有還原的話，整個 session 從此跳過 root 表，使用者的 C-p / C-t / C-d
+# 全部失效，而且看不出原因。一定要存舊值、離開時還原。
+KT_OLD=$(tmux show-options -qv -t "$SESS" key-table 2>/dev/null)
+kt_off() {
+    if [ -n "$KT_OLD" ]; then tmux set-option -t "$SESS" key-table "$KT_OLD" 2>/dev/null
+    else tmux set-option -t "$SESS" -u key-table 2>/dev/null; fi
+}
+kt_on() { tmux set-option -t "$SESS" key-table agent-backlog 2>/dev/null; }
+kt_on
+
+# 切到別的 window 時要把 root 表還回去，不然使用者離開選單去做別的事，
+# 快捷鍵是壞的。回到選單再關掉。純 tmux 條件式，不用額外開行程。
+if [ -n "$KT_OLD" ]; then _kt_restore="set-option -t $SESS key-table $KT_OLD"
+else _kt_restore="set-option -t $SESS -u key-table"; fi
+tmux set-hook -t "$SESS" after-select-window \
+    "if -F '#{==:#{window_id},$MYWIN}' 'set-option -t $SESS key-table agent-backlog' '$_kt_restore'" \
+    2>/dev/null
 
 # 任何可能改變尺寸的事件都叫我們重畫。
 # client-attached / client-detached 也要掛：另一個 client 離開時 session 會變回

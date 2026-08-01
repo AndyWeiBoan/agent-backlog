@@ -94,6 +94,16 @@ tmux set-option -w -t "$MYWIN" key-table agent-backlog
 挑鍵閃避是沒有用的 —— 下一台機器就是另一組 config。`prefix` 不受影響，
 所以 `prefix + ⌥←→` 調寬度、`prefix d` 卸離都還能用。
 
+⚠️ **但 `key-table` 是 session 層級的**（`set -w` / `set -p` 都會被轉成 session），
+它不會隨著我們的 window 消失。所以要：
+
+1. 啟動時存舊值，離開時還原（`cleanup` 裡做）
+2. 掛 `after-select-window` hook —— 使用者在選單開著時切到別的 window，
+   root 表要還回去，切回來再拿走
+
+漏掉第 1 點的後果是：關掉選單之後使用者的 `C-p` `C-t` `C-d` 全部失效，
+而且看不出跟這個 plugin 有關。
+
 ## MCP 也是零依賴的
 
 MCP 的 stdio transport 就是換行分隔的 JSON-RPC 2.0。難點不在協定，在 JSON：
