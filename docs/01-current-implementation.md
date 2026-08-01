@@ -192,6 +192,61 @@ item 活在 tmux server 記憶體。自己用勉強可接受，公開發佈會�
 - 使用者的 config 對 markdown 設 `wrap=false`（markview 在 wrap 開啟時無法 render
   超出視窗寬度的表格）。viewer 覆寫成 `wrap` 並綁 `w` 切換
 
+## tmux（寫新版時新踩到的）
+
+這一批是 2026-08-01 實作零依賴版本時撞出來的，見
+[07-implementation.md](07-implementation.md)。
+
+- **tmux 3.4 會把控制字元逃逸成字面的 `\037`**（六個字元），3.6a 則原樣輸出。用 ASCII
+  unit separator 當 `-F` 的欄位分隔符，在 Alpine 上整排欄位會消失。**改用 tab** ——
+  兩個版本都原樣通過。（上面「不要用 tab」那條是指預設 IFS/FS 會併連續欄位；
+  awk 用明確分隔符 `split`、shell 用 `cut -d` 都不會併）
+- **`trap` 一定要攔 `HUP`**。`kill-window` 送的就是 SIGHUP，只攔 `EXIT INT TERM` 的話
+  收尾完全不會跑 —— 實際後果是 `/tmp/ab.*` 一直累積、hook 留著指向死掉的 pane
+- **空字串的 `-t` 等於「當前的」**。`kill-window -t ""` 會殺掉使用者正在看的 window。
+  凡是拿變數當 target，先確認它非空再下指令
+- **`detach-client` 不會對其他 client 發 `client-resized`**。只掛這一個 hook 的話，
+  小 client 離開後版面回不來。要一併掛 `client-attached` / `client-detached`
+- **多個 client 附著時，window 尺寸由 `window-size` 決定**（預設 `latest`）。
+  有一個異常小的 client 就會把版面壓垮
+- **`resize-pane` 不會觸發 `client-resized`**，要用 `after-resize-pane`
+
+## 鍵位：搶不贏，別搶
+
+- **macOS 吃掉 `Ctrl+←/→`**（系統的切換桌面空間），那些位元組根本不會到終端機
+- **使用者的 `~/.tmux.conf` 可能用 root table 吃掉 `Option+←/→`**
+  （`bind -n M-Left select-pane -L`）—— tmux 在轉發給程式之前就攔下來了
+- 結論：**能交給 tmux 做的就交給它**，我們只掛 hook 對變化做反應。
+  調整分隔線就用 tmux 原本的 `prefix + ⌥←→`，程式端靠 `after-resize-pane` 得知
+
+## `unset TMUX` 是拆安全鎖
+
+從外部（例如 `limactl shell` 進 VM）attach 時需要清掉繼承來的 `$TMUX`，
+但**同一支腳本如果在 session 內部被執行，就會變成自己 attach 自己** ——
+client 的尺寸來自 pane，pane 又跟著 window 走，每次 resize 互相回饋，
+高度一路掉到 1 列，畫面永遠在抖。
+
+判斷「我現在在哪」再決定要不要清：
+
+```sh
+if [ -n "$TMUX" ] && tmux display -p '#{session_name}' 2>/dev/null | grep -qx backlog; then
+    exec sh .../open.sh          # 已經在裡面 → 只重開選單
+fi
+unset TMUX TMUX_TMPDIR           # 從外面進來 → 才需要清
+exec tmux attach -t backlog
+```
+
+## 終端機
+
+- **raw 模式關掉 ONLCR**，`\n` 只換行不歸位，每行會從上一行結束的欄位開始印。
+  要自己補 `\r`。awk 的 `ORS` 幫不上忙 —— 它只作用在 `print`，而 `print` 常常是拿來
+  寫檔給 shell 讀的，補了 CR 反而污染資料
+- **寫到最後一列的最後一格會讓終端機捲一行**，把最上面那行頂掉。
+  寫之前關掉自動換行（`\033[?7l` … `\033[?7h`），超出的直接被丟掉 ——
+  這也順便繞開了「算不出中文顯示寬度」的問題
+- **不要每次重畫都 `\033[2J`**，那是肉眼可見的閃爍。改成游標歸位 ＋ 逐行 `\033[K`，
+  最後 `\033[J` 清掉殘留
+
 ## 測試環境
 
 - 驗證 tmux 行為要用**隔離的 server**（`env -u TMUX TMUX_TMPDIR=$D tmux ...`），不要動到
