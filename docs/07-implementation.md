@@ -27,6 +27,7 @@
 | `scripts/migrate.sh` | 17 | 舊 key → 新 key（不刪舊的） |
 | `scripts/open.sh` | 12 | 入口：開 backlog window |
 | `scripts/add.sh` | 10 | 建立待辦 |
+| `scripts/dispatch.sh` | 60 | 派工：啟動 claude 並把內容貼進去 |
 | `scripts/preview_pane.sh` | 5 | 預覽窗格：從 fifo 讀內容印出來 |
 
 依賴：`tmux` `sh` `awk` `stty` `dd` `od` `sed` `cut` `mkfifo` —— 全部 POSIX。
@@ -67,9 +68,28 @@ C-d / C-u   預覽捲半頁
 C-f / C-b   預覽捲整頁
 prefix+⌥←→  調整分隔線寬度（tmux 原生，我們靠 hook 得知）
 Enter       切到該待辦
+C-g         派工
+C-t         輪替狀態
+C-x         刪除（先問 y/n）
 C-r         重新讀取清單
 ESC / C-c   離開，回到開選單前的 window
 ```
+
+## 鍵位為什麼能這樣用
+
+因為選單那個 window 設了 `key-table`：
+
+```sh
+tmux set-option -w -t "$MYWIN" key-table agent-backlog
+```
+
+指到一張**不存在**的表 = 什麼都沒綁 = 所有按鍵直接落到程式手上。
+沒有這行的話，使用者 `~/.tmux.conf` 裡任何 `bind -n` 都會先攔走
+（實際遇到的：`C-d` 開分割、`C-p` 選 session、`C-t` 開新 window、
+`C-s` 分割、`C-w` 殺 pane、`M-方向鍵` 切窗格）。
+
+挑鍵閃避是沒有用的 —— 下一台機器就是另一組 config。`prefix` 不受影響，
+所以 `prefix + ⌥←→` 調寬度、`prefix d` 卸離都還能用。
 
 ## 效能
 
@@ -107,7 +127,7 @@ ESC / C-c   離開，回到開選單前的 window
 | 清單標題截斷 | 逐位元組的 awk 上用 `length()` 當上界，中文會被高估（一個字算 3 而非 2），只會提早截斷，不會撐爆版面 |
 | 表格 | `md.awk` 不 render 表格，要算 East Asian Width |
 | 持久化 | 沒有。重開機／tmux server 掛掉就沒了（見 [04](04-roadmap.md) 階段二） |
-| 派工 / 刪除 | 尚未接上 |
+| 派工 | 需要 `claude` 在**那個 pane 的互動 shell** 的 PATH 裡（`run-shell` 繼承的是 tmux server 當初的 PATH，不是 pane 的） |
 
 ## 這一輪踩到的坑
 

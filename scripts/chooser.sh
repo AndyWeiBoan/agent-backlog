@@ -87,6 +87,16 @@ fi
 # resize 之後 tmux 不會重排已經印出的內容（實測：直接截掉），所以要重印。
 # hook 是另一個行程，沒辦法叫醒卡在 dd 的迴圈 —— 改成送一個 C-l 給我們自己，
 # 迴圈讀到就重量尺寸並重畫。
+# 讓這個 window 跳過使用者的 root key table。
+#
+# 沒有這行的話，使用者 ~/.tmux.conf 裡任何 `bind -n` 都會在按鍵到達我們之前
+# 攔走（實際遇到的：C-d 開分割、C-p 選 session、C-t 開新 window、C-s 分割、
+# C-w 殺 pane、M-方向鍵切窗格）。挑鍵閃避沒有用 —— 下一台機器就是另一組 config。
+#
+# 指到一張不存在的表就等於「什麼都沒綁」，所有按鍵直接落到程式手上。
+# prefix 不受影響，所以 prefix + ⌥←→ 調寬度、prefix d 卸離都還能用。
+tmux set-option -w -t "$MYWIN" key-table agent-backlog 2>/dev/null
+
 # 任何可能改變尺寸的事件都叫我們重畫。
 # client-attached / client-detached 也要掛：另一個 client 離開時 session 會變回
 # 大尺寸，但 tmux 不會為此對剩下的 client 發 client-resized —— 少了這兩個，
@@ -181,6 +191,51 @@ draw_preview() {
 
 scroll() { tmux send-keys -t "$RPANE" -X "$1" 2>/dev/null; }
 
+# 刪除。自己畫確認提示，不用 tmux 的 confirm-before ——
+# 那支需要一個明確的 target-client，從 pane 裡呼叫時解析不到（"no current client"）。
+# 反正選單本來就掌握畫面與按鍵，自己問更單純，視覺也一致。
+remove() {
+    id=$(selected_id)
+    [ -z "$id" ] && return
+    name=$(tmux display -p -t "$id" '#{window_name}' 2>/dev/null)
+    # 提示畫在最後一列。關掉自動換行，長標題不會把畫面頂掉。
+    printf '\033[?7l\033[%d;1H\033[K\033[7m 刪除「%s」? y = 確定，其他鍵取消 \033[0m\033[?7h' \
+        "$H" "$name"
+    k=$(readbytes)
+    set -- $k
+    if [ "${1:-}" = 121 ] || [ "${1:-}" = 89 ]; then      # y / Y
+        tmux kill-window -t "$id" 2>/dev/null
+        refresh_items
+        CUR=1
+        LAST_ID=""
+    fi
+    DIRTY=1
+}
+
+dispatch() {
+    id=$(selected_id)
+    [ -z "$id" ] && return
+    # 背景跑：dispatch 會等 claude 起來，最多 30 秒，不能卡住選單迴圈
+    tmux run-shell -b "sh '$DIR/dispatch.sh' $id" 2>/dev/null
+}
+
+# 狀態輪替。狀態本身是任意字串（排版會自動對齊），這裡只是給人快速切換用。
+cycle_status() {
+    id=$(selected_id)
+    [ -z "$id" ] && return
+    cur=$(tmux show-options -w -qv -t "$id" "$K_STATUS" 2>/dev/null)
+    case $cur in
+        pending) next=blocked ;;
+        blocked) next=done ;;
+        done)    next=pending ;;
+        running) next=done ;;
+        *)       next=pending ;;
+    esac
+    tmux set-option -w -t "$id" "$K_STATUS" "$next" 2>/dev/null
+    refresh_items
+    DIRTY=1
+}
+
 # 調整中間分隔線。調完把寬度記到 global option，下次開起來一樣寬。
 widen() {
     tmux resize-pane -t "$LPANE" "$1" 4 2>/dev/null
@@ -237,6 +292,9 @@ process() {
             5)     scroll scroll-down ;;                       # C-e 一行
             25)    scroll scroll-up ;;                         # C-y 一行
             # C-l：重畫。也是 client-resized 與 after-resize-pane 兩個 hook 的喚醒鍵。
+            7)     dispatch ;;                                # C-g 派工
+            20)    cycle_status ;;                            # C-t 切換狀態
+            24)    remove ;;                                  # C-x 刪除（會先確認）
             12)    measure
                    tmux set-option -g "$K_WIDTH" "$W" 2>/dev/null   # 記住調過的寬度
                    LAST_ID=""      # tmux 不會重排已印出的內容，預覽要重印

@@ -211,13 +211,50 @@ item 活在 tmux server 記憶體。自己用勉強可接受，公開發佈會�
   有一個異常小的 client 就會把版面壓垮
 - **`resize-pane` 不會觸發 `client-resized`**，要用 `after-resize-pane`
 
-## 鍵位：搶不贏，別搶
+## 鍵位：不要跟使用者的 config 搶
+
+**選單那個 window 設 `key-table` 指到一張不存在的表，就等於整張 root table 被跳過**，
+所有按鍵直接落到程式手上，`prefix` 不受影響：
+
+```sh
+tmux set-option -w -t "$MYWIN" key-table agent-backlog
+```
+
+沒有這行的話，使用者 `~/.tmux.conf` 裡任何 `bind -n` 都會先攔走。
+實際在這台機器上遇到的：`C-d` 開分割、`C-p` 選 session、`C-t` 開新 window、
+`C-s` 分割、`C-w` 殺 pane、`M-方向鍵` 切窗格。**挑鍵閃避沒有用** ——
+下一台機器就是另一組 config。
+
+其他相關的：
+
+- **`C-s` 是 XOFF**（軟體流量控制）。還沒進 raw 模式的那一層終端機會吃掉它並凍住輸出 ——
+  測試時整個畫面停格，很容易誤判成程式當掉
+- **`send-keys` 不經過鍵表**，是直接把位元組塞進 pane。所以「某個鍵會不會被攔」
+  用 `send-keys` 測不出來，一定要用真的 attached client
+- **`confirm-before` 需要明確的 target-client**。從 pane 裡呼叫會回 `no current client`。
+  自己在畫面上問 y/n 反而單純
+
+## 鍵位：搶不贏，別搶（歷史，已被上面的 key-table 取代）
 
 - **macOS 吃掉 `Ctrl+←/→`**（系統的切換桌面空間），那些位元組根本不會到終端機
 - **使用者的 `~/.tmux.conf` 可能用 root table 吃掉 `Option+←/→`**
   （`bind -n M-Left select-pane -L`）—— tmux 在轉發給程式之前就攔下來了
 - 結論：**能交給 tmux 做的就交給它**，我們只掛 hook 對變化做反應。
   調整分隔線就用 tmux 原本的 `prefix + ⌥←→`，程式端靠 `after-resize-pane` 得知
+
+## 行程判斷
+
+- **`pane_current_command` 對 Claude Code 是版本字串**（實測 `2.1.220`），不是 `claude`。
+  想知道「起來了沒」，比對「跟啟動前是不是不一樣」比比對特定名稱可靠
+- **`run-shell` 繼承的是 tmux server 當初的 PATH**，不是那個 pane 的互動 shell 的
+  （後者才會載入 profile）。所以在 `run-shell` 裡 `command -v claude` 找不到，
+  不代表 pane 裡打 `claude` 會失敗
+
+## 內容傳輸
+
+- 派工要把 markdown 送進 TUI，用 **`load-buffer` ＋ `paste-buffer`**，
+  不要 `send-keys` 拼字串也不要暫存檔轉手 —— buffer 完全不經過 shell，
+  引號、反引號、換行都不會被解析壞掉
 
 ## `unset TMUX` 是拆安全鎖
 

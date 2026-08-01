@@ -64,7 +64,7 @@ END {
     # 關掉自動換行（DECAWM）再寫，超出的直接被丟掉，就完全不用算顯示寬度 ——
     # 正好繞開 awk 算不了 East Asian Width 的老問題。
     printf "%s?7l%s%d;1H%s%s%s%s?7h", E, E, h, DIM,
-           " ↑↓ 選擇   捲預覽 C-e/C-y · C-d/C-u · C-f/C-b   prefix+⌥←→ 調寬度   Enter 切過去   ESC 離開", R, E
+           " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  ESC 離開", R, E
 }
 
 function out(s) { printf "%s%s\r\n", s, EL }

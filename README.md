@@ -62,8 +62,15 @@ run-shell ~/3rd-party/agent-backlog/agent-backlog.tmux
 | `C-f` `C-b` | 預覽捲整頁 |
 | `prefix` + `⌥←` `⌥→` | 調整中間分隔線（tmux 原生，寬度會記住） |
 | `Enter` | 切到該待辦 |
+| `C-g` | 派工：在該 window 啟動 claude 並把內容送進去 |
+| `C-t` | 輪替狀態（pending → blocked → done） |
+| `C-x` | 刪除（會先問 y/n） |
 | `C-r` | 重新讀取清單 |
 | `ESC` `C-c` | 離開，回到開清單之前的 window |
+
+清單開著的時候，**這個 window 會跳過你 `~/.tmux.conf` 的 root key table**
+（`bind -n` 那些），否則像 `C-d` `C-p` `C-t` 這種常見綁定會在按鍵到達清單之前被攔走。
+`prefix` 不受影響。
 
 新增一則：
 
@@ -83,7 +90,7 @@ prod 上 KYC 縮圖開不出來，7d 82 筆。' | sh scripts/add.sh prod-kyc-thu
 
 ```tmux
 set -g @agent_backlog_no_key on
-bind-key -n C-t run-shell "sh #{@agent_backlog_path}/scripts/open.sh"
+bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh"
 ```
 
 ## 從舊版 action-items 遷移
@@ -120,7 +127,7 @@ tmux list-windows -a -f '#{!=:#{@agent_backlog_prompt},}' \
   目前沒有持久化（規劃見 [docs/04](docs/04-roadmap.md) 階段二）
 - **範圍是同一台機器的同一個 tmux server**，不跨機器
 - `md.awk` 不 render 表格（要算 East Asian Width）
-- 派工與刪除尚未接上
+- 派工需要 `claude` 在**那個 pane 的互動 shell** 的 PATH 裡
 
 ## 移除
 
