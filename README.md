@@ -30,13 +30,29 @@
 
 ### TPM
 
-`~/.tmux.conf`：
-
 ```tmux
-set -g @plugin 'andy/agent-backlog'
+set -g @plugin 'your-name/agent-backlog'      # 發佈到 GitHub 之後
+run '~/.tmux/plugins/tpm/tpm'
 ```
 
 然後 `prefix + I`。
+
+**還沒發佈的話，`@plugin` 直接給本機 repo 的絕對路徑就好** ——
+TPM 會先試著直接 `git clone "$plugin"`，失敗才退回去展開成 GitHub 網址：
+
+```tmux
+set -g @plugin '/home/you/src/agent-backlog'
+```
+
+> - **路徑不能用 `$HOME` 或 `~`** —— tmux 不會展開 option 值裡的變數
+> - **TPM 自己需要 `bash` 與 `git`**（它的腳本是 bash 寫的）。
+>   這是 TPM 的依賴，不是本 plugin 的 —— 用「手動」那條路就完全不需要
+> - `prefix + I` 會「下載 ＋ 載入」兩件事一起做。
+>   若是用 `~/.tmux/plugins/tpm/bin/install_plugins` 手動裝，它只下載，
+>   要再 `tmux source-file ~/.tmux.conf` 才會生效
+
+在 Alpine（tmux 3.4 / busybox）上實測過整條流程：clone → 載入 → `prefix + a`
+開起來的確實是 `~/.tmux/plugins/agent-backlog/` 底下那一份。
 
 ### 手動
 
