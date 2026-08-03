@@ -1,9 +1,23 @@
 # 極簡 markdown → ANSI renderer（POSIX awk，零外部依賴）
 # 原型：證明純 tmux plugin 也能自己做 render 與語法高亮。
 #
-# 刻意不做「換行」與「表格對齊」—— 那兩件事需要 East Asian Width 計算，
-# awk 拿不到 codepoint。但內容是印進 pane 的，終端機自己會按顯示寬度折行，
-# 所以不需要我們算。程式碼區塊用左側 │ 邊框而不是滿版底色，也就不必補寬度。
+# 刻意不做「換行」—— 內容是印進 pane 的，終端機自己會按顯示寬度折行，算得比我們對
+# （含 CJK），還附 [n/m] 指示器。程式碼區塊用左側 │ 邊框而不是滿版底色，也不必補寬度。
+#
+# 表格是唯一必須自己算顯示寬度的地方：欄要對齊就得知道每個 cell 佔幾格。
+# 這件事在 POSIX awk 裡做得到 —— sprintf("%c", i) 建 byte → 值 的表，
+# 就能自己解 UTF-8 拿到 codepoint，再查 East Asian Width 區間（見 dw / iswide）。
+#
+# ⚠️ 兩個踩過的坑，改這裡之前先讀：
+#
+# 1. length() 回的是 byte 數還是字元數，取決於 awk 實作與 locale ——
+#    macOS BWK awk 20200816 在 UTF-8 locale 下 length("專案") == 6（byte），
+#    gawk 則是 2（字元）。所以呼叫端一律加 LC_ALL=C，兩邊都退成 byte 模式，
+#    寬度計算才有單一定義。改了呼叫方式記得連 LC_ALL 一起帶。
+#
+# 2. BWK awk 不認十六進位常值。0x80 會被解析成 0 接一個叫 x80 的空變數，
+#    比較永遠成立，UTF-8 解碼靜默歪掉（第一版 dw("repo") 回 1 就是這樣）。
+#    這個檔裡的數字全部用十進位，不要「順手」改成十六進位。
 
 BEGIN {
     E   = sprintf("%c[", 27)
@@ -16,6 +30,14 @@ BEGIN {
     H3  = E "1;38;5;214m" # 標題三：橘
     BUL = E "38;5;214m"   # bullet 符號
     COD = E "38;5;231;48;5;236m"  # inline code：淺字深底
+    # 表格 cell 裡的 inline code 只上前景色，不要底色也不要補空格。
+    # 理由：表格本身已經是結構化的，再加一塊底色是雙重編碼，會把欄位切碎；
+    # 而且補的空格會算進顯示寬度，對齊就毀了。
+    COD_T = E "38;5;153m"
+    # 表格的斑馬紋（zebra striping）底色。
+    # 用 236 是因為 inline code 的底色本來就是 236 —— 同一個顏色已經在這個
+    # renderer 裡驗過能看，不需要再賭第二個色號在別人的配色下長怎樣。
+    ZEB = E "48;5;236m"
     BAR = E "38;5;240m"   # 邊框
     QUO = E "38;5;108m"   # 引用
     TODO = E "38;5;214m"  # 未打勾的框
@@ -36,7 +58,18 @@ BEGIN {
     n = split(sqlkw, a, " "); for (i = 1; i <= n; i++) { KWSET["sql|" a[i]] = 1 }
     n = split(cskw,  a, " "); for (i = 1; i <= n; i++) { KWSET["cs|"  a[i]] = 1 }
     fence = 0
+
+    # byte → 數值。awk 沒有 ord()，但 sprintf("%c", i) 給得出反向的表。
+    for (i = 0; i < 256; i++) ORD[sprintf("%c", i)] = i
+    nt = 0            # 手上有沒有正在累積的表格
+    tnr = 0; tnc = 0  # 表格的列數 / 欄數
 }
+
+# ── 表格 ─────────────────────────────────────────────────────
+#
+# 表格必須整塊看完才知道每欄要多寬，所以先累積，遇到第一行非表格的行再吐出來。
+# 這條規則要放在 fence 之前 —— 表格後面緊接 ``` 時，要先把表格印完。
+nt > 0 && fence == 0 && $0 !~ /^[ \t]*\|/ { tflush() }
 
 # ── 程式碼區塊 ───────────────────────────────────────────────
 /^```/ {
@@ -49,7 +82,7 @@ BEGIN {
         head = (lang == "" ? "" : " " lang " ")
         printf "%s┌─%s%s%s\n", BAR,
                (lang == "" ? "" : " " B lang R BAR " "),
-               dash(w - 2 - length(head)), R
+               dash(w - 2 - dw(head)), R
     } else {
         fence = 0
         printf "%s└%s%s\n", BAR, dash(w - 1), R
@@ -58,6 +91,39 @@ BEGIN {
 }
 fence == 1 {
     printf "%s│%s %s\n", BAR, R, highlight($0, lang)
+    next
+}
+
+# 累積一列。放在 fence 規則之後，程式碼區塊裡的 | 才不會被當成表格。
+fence == 0 && /^[ \t]*\|/ {
+    tline = $0
+    sub(/^[ \t]*\|/, "", tline)
+    sub(/\|[ \t]*$/, "", tline)
+    tm = split(tline, tc, "|")
+
+    # 分隔列（|---|:--:|---:|）不是資料，它宣告的是對齊方式
+    isdelim = (tm > 0)
+    for (ti = 1; ti <= tm; ti++) {
+        gsub(/^[ \t]+/, "", tc[ti]); gsub(/[ \t]+$/, "", tc[ti])
+        if (tc[ti] !~ /^:?-+:?$/) isdelim = 0
+    }
+    if (isdelim) {
+        for (ti = 1; ti <= tm; ti++) {
+            if (tc[ti] ~ /^:-+:$/)    TA[ti] = "c"
+            else if (tc[ti] ~ /-+:$/) TA[ti] = "r"
+            else                      TA[ti] = "l"
+        }
+        nt = 1          # 只有表頭 + 分隔列時也還算一個表格
+        next
+    }
+
+    tnr++; nt = 1
+    if (tm > tnc) tnc = tm
+    for (ti = 1; ti <= tm; ti++) {
+        T[tnr, ti] = tc[ti]
+        tw_ = dw(tplain(tc[ti]))
+        if (tw_ > TW[ti]) TW[ti] = tw_
+    }
     next
 }
 
@@ -104,10 +170,257 @@ fence == 1 {
 
 { print inline($0) }
 
+END { if (nt > 0) tflush() }
+
 function dash(n_,   o) {
     o = ""
     while (n_ > 0) { o = o "─"; n_-- }
     return o
+}
+function sp(n_,   o) {
+    o = ""
+    while (n_ > 0) { o = o " "; n_-- }
+    return o
+}
+
+# ── 顯示寬度 ─────────────────────────────────────────────────
+#
+# decode 把 s 第 i 個 byte 起的一個 UTF-8 字元解出來，結果放在全域 CP / CLEN。
+# 用全域而不是回傳值，因為 awk 的函式只能回一個值，而這裡兩個都要。
+function decode(s, i,   b, j) {
+    b = ORD[substr(s, i, 1)]
+    if      (b < 128) { CP = b;       CLEN = 1 }
+    else if (b < 224) { CP = b - 192; CLEN = 2 }
+    else if (b < 240) { CP = b - 224; CLEN = 3 }
+    else              { CP = b - 240; CLEN = 4 }
+    for (j = 1; j < CLEN; j++) CP = CP * 64 + (ORD[substr(s, i + j, 1)] - 128)
+}
+function dw(s,   i, n, wid) {
+    n = length(s); i = 1; wid = 0
+    while (i <= n) {
+        decode(s, i)
+        i += CLEN
+        wid += iswide(CP) ? 2 : 1
+    }
+    return wid
+}
+# East Asian Width = W 或 F 的區間。全部十進位（見檔頭第 2 點）。
+function iswide(c) {
+    if (c < 4352) {
+        # 這個範圍裡只有零星的 emoji-presentation 字元是寬的。
+        # 不能整段 0x2600-0x27BF 當寬 —— ☐ ☑ ✓ ▸ ● 都在附近而且是窄的，
+        # 而我們自己就用 ☐ ☑ 畫 checklist，一律當寬會讓那些行也歪掉。
+        return (c >=  8986 && c <=  8987) || (c >=  9193 && c <=  9196) ||
+                c ==  9200 || c ==  9203 ||
+               (c >=  9725 && c <=  9726) || (c >=  9748 && c <=  9749) ||
+               (c >=  9800 && c <=  9811) ||
+                c ==  9855 || c ==  9875 || c ==  9889 ||
+               (c >=  9898 && c <=  9899) || (c >=  9917 && c <=  9918) ||
+               (c >=  9924 && c <=  9925) ||
+                c ==  9934 || c ==  9940 || c ==  9962 ||
+               (c >=  9970 && c <=  9971) ||
+                c ==  9973 || c ==  9978 || c ==  9981 || c ==  9989 ||
+               (c >= 9994 && c <= 9995) ||
+                c == 10024 || c == 10060 || c == 10062 ||
+               (c >= 10067 && c <= 10069) ||
+                c == 10071 || (c >= 10133 && c <= 10135) ||
+                c == 10160 || c == 10175 ||
+               (c >= 12288 && c <= 12351)   # 全形空白與 CJK 標點（在 4352 以下）
+    }
+    return (c >=  4352 && c <=  4447) ||   # Hangul Jamo
+           (c >= 11904 && c <= 12245) ||   # CJK 部首補充、康熙部首
+           (c >= 12272 && c <= 13311) ||   # 注音、假名、CJK 相容
+           (c >= 13312 && c <= 19903) ||   # CJK 擴充 A
+           (c >= 19968 && c <= 40959) ||   # CJK 統一漢字
+           (c >= 40960 && c <= 42191) ||   # 彝文
+           (c >= 44032 && c <= 55203) ||   # 韓文音節
+           (c >= 63744 && c <= 64255) ||   # CJK 相容漢字
+           (c >= 65040 && c <= 65135) ||   # 縱書標點
+           (c >= 65280 && c <= 65376) ||   # 全形
+           (c >= 65504 && c <= 65510) ||
+           (c >= 127744 && c <= 129791) || # emoji
+           (c >= 131072 && c <= 262141)    # CJK 擴充 B 以後
+}
+
+# ── 表格：寬度用的純文字、樣式、截斷、輸出 ────────────────────
+#
+# 寬度要算在「拿掉標記之後」的文字上：`code` 的反引號和 **bold** 的星號
+# 都不會顯示，算進去欄寬就會多留空位。
+function tplain(s) {
+    gsub(/`/, "", s)
+    gsub(/\*\*/, "", s)
+    return s
+}
+# 表格版的 inline()。多一個 base 參數：每次結束一段樣式後要把 base 補回去，
+# 否則 reset 會把整個 cell 的樣式（例如表頭的粗體）一起關掉。
+function tinline(s, base,   out, i, n, parts) {
+    out = ""; n = split(s, parts, "`")
+    for (i = 1; i <= n; i++) {
+        if (i % 2 == 0) out = out COD_T parts[i] R base
+        else            out = out tbolds(parts[i], base)
+    }
+    return out
+}
+function tbolds(s, base,   out, i, n, parts) {
+    out = ""; n = split(s, parts, "\\*\\*")
+    for (i = 1; i <= n; i++) {
+        out = out (i % 2 == 0 ? B parts[i] R base : parts[i])
+    }
+    return out
+}
+# 取 s 前 wd 格，剩下的放全域 CUTREST。給「沒有斷點可用的長 token」硬切用。
+function tcut(s, wd,   acc, i, wid, cw) {
+    acc = ""; wid = 0; i = 1
+    while (i <= length(s)) {
+        decode(s, i)
+        cw = iswide(CP) ? 2 : 1
+        if (wid + cw > wd) break
+        acc = acc substr(s, i, CLEN)
+        wid += cw
+        i += CLEN
+    }
+    CUTREST = substr(s, i)
+    return acc
+}
+function rstrip(s) { sub(/ +$/, "", s); return s }
+
+# 把一個 cell 折成寬度 wd 以內的若干行，結果放 WR[col, 1..n]，回傳 n。
+#
+# 這是「cell 內部折行」，不是讓行溢出到下一行 —— 欄寬不變、補白照補，
+# 所以垂直對齊完全保留，而內容一個字都不會掉。截斷（… 省略號）是上一版的做法，
+# 已經拿掉了：在唯讀的預覽裡看不到內容，比表格變長嚴重得多。
+#
+# 斷行規則：先切成「原子」再貪心塞。
+#   - 一個寬字元自己是一個原子 —— CJK 沒有空白可斷，逐字斷正是中文的斷行規則
+#   - 一串非空白的窄字元（英文詞、路徑、TFM 串）是一個原子，不從中間切
+#   - 空白黏在前一個原子尾巴，所以斷在這裡時行尾不會留下看不見的空白
+function twrap(s, wd, col,   i, n, ch, na, k, line, lw, t, cnt) {
+    # 放得下就原樣回傳，行內樣式（`code`、**bold**）留著
+    if (dw(tplain(s)) <= wd) { WR[col, 1] = s; return 1 }
+    # 要折行才拿掉樣式：ANSI 碼跨行會裂開，而且會被算進寬度
+    s = tplain(s)
+    na = 0; i = 1; n = length(s)
+    while (i <= n) {
+        decode(s, i); ch = substr(s, i, CLEN)
+        if (iswide(CP)) {
+            na++; AT[na] = ch; AC[na] = 2; AW[na] = 2; OPEN[na] = 0
+            i += CLEN; continue
+        }
+        if (ch == " ") {
+            if (na == 0) { na++; AT[na] = ""; AC[na] = 0; AW[na] = 0 }
+            AT[na] = AT[na] " "; AW[na]++       # AC 不動：尾隨空白不算進斷行判斷
+            OPEN[na] = 0
+            i++; continue
+        }
+        if (na == 0 || !OPEN[na]) { na++; AT[na] = ""; AC[na] = 0; AW[na] = 0 }
+        AT[na] = AT[na] ch; AC[na]++; AW[na]++
+        # 路徑分隔號與標點後面也算斷點。少了這個，
+        # ~/higgs/gp/gp-agentic/kernel/common 會被硬切成 …/ke + rnel/common。
+        # 斷在 / ; , . 之後至少切在有意義的地方。
+        OPEN[na] = (ch == "/" || ch == ";" || ch == "," || ch == ".") ? 0 : 1
+        i += CLEN
+    }
+
+    cnt = 0; line = ""; lw = 0
+    for (k = 1; k <= na; k++) {
+        if (line != "" && lw + AC[k] > wd) {
+            cnt++; WR[col, cnt] = rstrip(line)
+            line = ""; lw = 0
+        }
+        if (AC[k] > wd) {
+            # 單一原子就比整欄寬（長路徑、netstandard2.0;net6.0;net8.0 這種）：
+            # 沒有斷點可用，只能硬切。
+            t = AT[k]
+            while (dw(t) > wd) { cnt++; WR[col, cnt] = tcut(t, wd); t = CUTREST }
+            line = t; lw = dw(t)
+            continue
+        }
+        line = line AT[k]; lw += AW[k]
+    }
+    cnt++; WR[col, cnt] = rstrip(line)          # 最後一行（cell 為空時也要有一行）
+    return cnt
+}
+function tflush(   r, c, k, big, total, out, rule, s, padn, styled, last, hmax, bg, lw) {
+    total = 0
+    for (c = 1; c <= tnc; c++) total += TW[c]
+    total += (tnc - 1) * 3          # 每個欄縫是 " │ "
+
+    # 塞不下就從最寬的欄一格一格砍，砍到 8 格為底。
+    # 反覆砍「當下最寬的那欄」會自然把痛苦攤平，不需要另外算比例。
+    #
+    # 砍掉的內容不會消失 —— 超出欄寬的部分在 cell 內部折行（見 twrap）。
+    # 欄數多到連 8 格都湊不出來時就讓它超出窗格；那種表格本來就不該用表格寫。
+    while (total > w) {
+        big = 1
+        for (c = 2; c <= tnc; c++) if (TW[c] > TW[big]) big = c
+        if (TW[big] <= 8) break
+        TW[big]--; total--
+    }
+
+    for (r = 1; r <= tnr; r++) {
+        for (c = 1; c <= tnc; c++) LN[c] = twrap(T[r, c], TW[c], c)
+        hmax = 1
+        for (c = 1; c <= tnc; c++) if (LN[c] > hmax) hmax = LN[c]
+
+        # 斑馬紋（zebra striping）：隔列鋪底色。
+        #
+        # 這同時取代了「列間虛線」—— 相鄰兩列顏色必定不同，多行的列不會再黏成
+        # 一團，不需要另外畫線去分開它們。
+        #
+        # 表頭不鋪（它有粗體和底下那條線），第一列資料也不鋪，
+        # 這樣色塊從第二列開始，緊貼表頭底線的那列看起來乾淨。
+        bg = (r > 1 && r % 2 == 1) ? ZEB : ""
+
+        # 欄數不齊的表格（手寫時很常見）：尾端沒東西的欄就不要畫欄縫，
+        # 否則會留一截「│」懸在空白上。前面缺的還是要補，對齊不能斷。
+        #
+        # ⚠️ last 要按「整列」算，不能每行各算一次。折行後只有第一行有內容的欄，
+        # 續行如果不畫欄縫，續下來的字就會沒有邊界地飄在那裡 —— 看起來不像同一列。
+        last = 0
+        for (c = 1; c <= tnc; c++) if (T[r, c] != "") last = c
+
+        for (k = 1; k <= hmax; k++) {
+            out = ""; lw = 0
+            for (c = 1; c <= last; c++) {
+                s = (k <= LN[c] ? WR[c, k] : "")
+                padn = TW[c] - dw(tplain(s))
+                # base 傳 bg：cell 裡的 `code` / **bold** 結束時會送 reset，
+                # 那個 reset 會把底色一起關掉，所以要立刻把 bg 補回去。
+                # 表頭沒有底色，base 傳 B（粗體）—— 同樣的道理。
+                styled = (r == 1 ? B tinline(s, B) R : tinline(s, bg))
+                if (TA[c] == "r")      styled = sp(padn) styled
+                else if (TA[c] == "c") styled = sp(int(padn / 2)) styled sp(padn - int(padn / 2))
+                else                   styled = styled sp(padn)
+                if (c > 1) { out = out BAR " │ " R bg; lw += 3 }
+                out = out styled
+                lw += TW[c]
+            }
+            if (bg != "") {
+                # 有底色就要補滿整張表的寬度，否則色塊尾巴會缺一角
+                # （欄數不齊、或這列比較短的時候）。
+                #
+                # ⚠️ 一定要以 reset 收尾。chooser 在每行尾巴補 \033[K，
+                # 而 \033[K 是用「當前底色」清到行尾的（BCE）——
+                # 底色還開著的話，斑馬紋會一路延伸到窗格右緣。
+                out = bg out sp(total - lw) R
+            } else {
+                sub(/ +$/, "", out)   # 沒底色的話，行尾補的空白沒有作用，省下來
+            }
+            print out
+        }
+        if (r == 1) {
+            rule = ""
+            for (c = 1; c <= tnc; c++) rule = rule (c > 1 ? "─┼─" : "") dash(TW[c])
+            printf "%s%s%s\n", BAR, rule, R
+        }
+    }
+
+    # 收乾淨：同一份內容裡可能有好幾個表格，殘留的欄寬會污染下一個。
+    for (c in TW) delete TW[c]
+    for (c in TA) delete TA[c]
+    for (c in T)  delete T[c]
+    for (c in WR) delete WR[c]
+    nt = 0; tnr = 0; tnc = 0
 }
 
 # ── 行內樣式 ─────────────────────────────────────────────────

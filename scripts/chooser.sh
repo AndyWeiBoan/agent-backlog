@@ -267,7 +267,9 @@ draw_preview() {
     f="$CACHE/${id#@}"
     # 每行結尾補 \033[K（清到行尾），這樣重畫時就不需要清整個畫面。
     # \033[2J 是肉眼可見的一閃，換頁面時特別明顯。
-    [ -f "$f" ] || ab_prompt "$id" | awk -v w="$PW" -f "$DIR/md.awk" \
+    # LC_ALL=C 是必要的，不是保險：md.awk 自己解 UTF-8 算顯示寬度（表格對齊要用），
+    # 前提是 length() 回 byte 數。gawk 在 UTF-8 locale 下會回字元數，算出來就錯了。
+    [ -f "$f" ] || ab_prompt "$id" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
         | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$f"
 
     # 先清 history 再寫，寫的時候用 \033[H 覆蓋而不是 \033[2J 清空 ——
@@ -373,7 +375,7 @@ poll() {
     # 選中那則的內容有沒有變（agent 打勾／append 都算）
     if [ -n "$LAST_ID" ]; then
         _f="$CACHE/${LAST_ID#@}"
-        ab_prompt "$LAST_ID" | awk -v w="$PW" -f "$DIR/md.awk" \
+        ab_prompt "$LAST_ID" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
             | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$_f.new"
         if ! cmp -s "$_f" "$_f.new"; then
             mv "$_f.new" "$_f"
