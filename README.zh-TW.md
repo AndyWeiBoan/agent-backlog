@@ -71,6 +71,8 @@ flowchart LR
   沒有 lexer 的語言（log、stack trace）原樣輸出 —— 那本來就不該上色
 - **可捲動** —— 一行（`C-e`/`C-y`）、半頁（`C-d`/`C-u`）、整頁（`C-f`/`C-b`），
   附 tmux 自己的 `[n/m]` 位置指示器
+- **會自己更新** —— 清單與預覽每幾秒自動比對一次，所以派工出去的 agent
+  把 checklist 一項項勾掉時，你不用碰鍵盤就看得到
 - **中文寬度正確。** 折行交給 tmux 的 copy-mode，雙寬字元不會跑位
 
 全部是 **169 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、

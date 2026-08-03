@@ -73,6 +73,8 @@ check. So the preview isn't a plain-text dump:
   untouched — which is what you want for them
 - **Scrollable** — one line (`C-e`/`C-y`), half page (`C-d`/`C-u`), full page
   (`C-f`/`C-b`), with tmux's own `[n/m]` position indicator
+- **Live** — the list and the preview refresh themselves every few seconds, so you
+  watch a dispatched agent tick its checklist off without touching the keyboard
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 

@@ -352,11 +352,47 @@ clamp() {
     [ "$CUR" -gt "$hit" ] && CUR=$hit
 }
 
+# ── 自動更新 ──────────────────────────────────────────
+# 派工出去的 agent 會改待辦（打勾、改狀態、append 結論），
+# 沒有這段的話畫面會停在舊資料，要手動按 C-r 才更新 ——
+# 那「看著 agent 把 checklist 一項項勾掉」就不成立了。
+#
+# 做法：主迴圈的讀鍵改成有逾時（3 秒），逾時就比對一次。
+# 內容沒變就什麼都不做，所以閒置成本只有每 3 秒兩次 tmux 查詢。
+poll() {
+    ab_items "$SCOPE" > "$ITEMS.new" 2>/dev/null || : > "$ITEMS.new"
+    if ! cmp -s "$ITEMS" "$ITEMS.new"; then
+        mv "$ITEMS.new" "$ITEMS"
+        TOTAL=$(wc -l < "$ITEMS" | tr -d ' ')
+        clamp
+        DIRTY=1
+    else
+        rm -f "$ITEMS.new"
+    fi
+
+    # 選中那則的內容有沒有變（agent 打勾／append 都算）
+    if [ -n "$LAST_ID" ]; then
+        _f="$CACHE/${LAST_ID#@}"
+        ab_prompt "$LAST_ID" | awk -v w="$PW" -f "$DIR/md.awk" \
+            | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$_f.new"
+        if ! cmp -s "$_f" "$_f.new"; then
+            mv "$_f.new" "$_f"
+            LAST_ID=""      # 強制重畫預覽
+            DIRTY=1
+        else
+            rm -f "$_f.new"
+        fi
+    fi
+}
+
 # ── 讀鍵 ──────────────────────────────────────────────
 # 一次讀「這一批」而不是一個位元組。
 # tty 在 raw（min 1）模式下，一次 read() 會把當下已到達的位元組全部給你，
 # 所以快打或貼上時只付一次 dd+od 的成本，方向鍵的 ESC [ A 三個位元組也會
 # 一起到，不必為了辨識它去做逾時讀取。
+# 有逾時的讀取：3 秒沒按鍵就回來讓主迴圈 poll 一次。
+# ⚠️ min 0 之下「讀到空的」不再代表 EOF（逾時也是空的），
+# 所以 tty 消失的判斷改成問 tmux 那個 pane 還在不在。
 readbytes() { dd bs=256 count=1 2>/dev/null | od -An -tu1; }
 
 # 只有在 ESC 落在整批的最後一個位元組時才需要它 —— 分辨「單獨按 ESC」
@@ -364,7 +400,7 @@ readbytes() { dd bs=256 count=1 2>/dev/null | od -An -tu1; }
 readbytes_timed() {
     stty min 0 time 1
     b=$(readbytes)
-    stty min 1 time 0
+    stty min 0 time 30
     printf '%s' "$b"
 }
 
@@ -467,19 +503,22 @@ draw_list
 draw_preview
 
 stty raw -echo
+stty min 0 time 30          # 3 秒逾時，用來定期 poll
 
-eof=0
 while :; do
     batch=$(readbytes)
-    # 阻塞模式下讀到空的，通常代表 tty 已經沒了（EOF）。
-    # 但也可能只是被訊號打斷（例如 SIGWINCH），所以連續幾次才認定。
-    # 不做這個防護的話，tty 一消失就是無窮迴圈。
     if [ -z "$batch" ]; then
-        eof=$((eof + 1))
-        [ "$eof" -ge 50 ] && exit 0
+        # 逾時（或 tty 沒了）。先確認 pane 還在，不在就結束 ——
+        # 少了這個判斷，終端機關掉之後主迴圈會空轉。
+        tmux display -p -t "$LPANE" '' >/dev/null 2>&1 || exit 0
+        poll
+        if [ "$DIRTY" = 1 ]; then
+            draw_list
+            draw_preview
+            DIRTY=0
+        fi
         continue
     fi
-    eof=0
     process $batch          # 不加引號：靠 IFS 切成一個個位元組值
 
     # resize 是連續事件 —— 拖曳分隔線、連按 ⌥←→、縮放終端機，
@@ -494,7 +533,7 @@ PREV_EMPTY=1            # 預覽窗格現在是不是空的。
                         # LAST_ID 清掉來強制重畫，那樣就判斷不出「畫面上還有沒有東西」。
             stty min 0 time 1
             more=$(readbytes)
-            stty min 1 time 0
+            stty min 0 time 30
             [ -n "$more" ] && process $more
         done
         measure
