@@ -120,9 +120,11 @@ while IFS= read -r line; do
                         # 不要用 `read` 切 tab 分隔的欄位 —— tab 屬於 IFS whitespace，
                         # 連續兩個會被併成一個，空的狀態欄會讓整排跑位。用 awk 切。
                         # 順便把 pane_current_command 一起在 tmux 那邊取回來，省掉逐則查詢。
+                        # 清單是整個 server 的，待辦可能散在不同 session ——
+                        # 標出來 agent 才知道 dispatch 之後人要去哪裡找。
                         tmux list-windows -a -f "$AB_FILTER" \
-                            -F "#{window_id}${US}${AB_STATUS_F}${US}#{pane_current_command}${US}#{window_name}" \
-                        | awk -F"$US" '{printf "%s  %-8s %s  (%s)\n", $1, ($2==""?"-":$2), $4, $3}' \
+                            -F "#{window_id}${US}${AB_STATUS_F}${US}#{pane_current_command}${US}#{session_name}${US}#{window_name}" \
+                        | awk -F"$US" '{printf "%s  %-8s %s  [%s]  (%s)\n", $1, ($2==""?"-":$2), $5, $4, $3}' \
                             > "$BUF"
                     fi
                     reply_text "$id" "$BUF"

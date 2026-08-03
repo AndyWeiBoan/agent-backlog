@@ -173,6 +173,17 @@ done
 回滾永遠只是「不按那個鍵」—— 把 `.tmux.conf` 裡的 `run-shell` 那行拿掉，
 或 `tmux unbind A`。
 
+## 範圍：整個 tmux server，不分 session
+
+清單用的是 `tmux list-windows -a` —— **掃整個 server**。所以不管你在哪個 session
+開清單，看到的都是同一份，跨 session 的待辦也在裡面。
+
+按 `Enter` 時，如果那則在別的 session，會 `switch-client` 把你帶過去
+（只做 `select-window` 的話，你的 client 會留在原地，看起來像沒反應）。
+
+範圍的邊界是**同一台機器的同一個 tmux server**。不同 server（不同 `TMUX_TMPDIR`）
+彼此看不到。
+
 ## 資料存在哪
 
 | option | 內容 |

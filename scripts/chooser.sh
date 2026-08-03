@@ -56,9 +56,21 @@ finish() {
     # 不這樣做的話，殺掉自己之後 tmux 會自己挑一個，使用者會莫名掉在某則待辦的
     # shell 裡 —— 那個 shell 的提示字元跟原本的環境不一樣，看起來像換了台機器。
     [ -z "$TARGET" ] && TARGET=$(tmux show-options -gqv "$K_RETURN" 2>/dev/null)
+
     # 先把焦點移到目標 window，再殺掉自己這個 window。
     # 反過來做的話，殺掉 active window 會讓 tmux 自己挑下一個，蓋掉我們的選擇。
-    [ -n "$TARGET" ] && tmux select-window -t "$TARGET" 2>/dev/null
+    #
+    # ⚠️ 清單是整個 server 的（list-windows -a），所以選到的那則很可能在**別的
+    # session**。這時候只 select-window 是不夠的 —— 它只改那個 session 的當前
+    # window，使用者的 client 還留在原地，看起來就像「按了沒反應」。
+    # 要再 switch-client 把人帶過去。
+    if [ -n "$TARGET" ]; then
+        tsess=$(tmux display -p -t "$TARGET" '#{session_id}' 2>/dev/null)
+        tmux select-window -t "$TARGET" 2>/dev/null
+        if [ -n "$tsess" ] && [ "$tsess" != "$SESS" ]; then
+            tmux switch-client -t "$tsess" 2>/dev/null
+        fi
+    fi
     tmux kill-window -t "$MYWIN" 2>/dev/null
     exit 0
 }
