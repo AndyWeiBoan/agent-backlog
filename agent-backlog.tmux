@@ -38,8 +38,10 @@ for c in awk sed stty dd od cut mkfifo mktemp; do
 done
 
 # ── 設定 ──────────────────────────────────────────────
-# @agent_backlog_key      開選單的鍵（prefix 之後），預設 A
-# @agent_backlog_no_key   設成 on 就完全不綁鍵，自己在 .tmux.conf 裡綁
+# @agent_backlog_key       開選單的鍵（prefix 之後），預設 A
+# @agent_backlog_root_key  不需要 prefix 的鍵，空白分隔可給多個
+#                          例：'C-/ C-_'（Ctrl+/ 要綁兩個，見下）
+# @agent_backlog_no_key    設成 on 就完全不綁鍵，自己在 .tmux.conf 裡綁
 key=$(tmux show-options -gqv '@agent_backlog_key')
 [ -z "$key" ] && key=A
 nokey=$(tmux show-options -gqv '@agent_backlog_no_key')
@@ -54,6 +56,16 @@ if [ "$nokey" != "on" ]; then
             tmux bind-key "$alt" run-shell "sh '$DIR/scripts/open.sh'"
             ;;
     esac
+fi
+
+# 不需要 prefix 的鍵。
+# ⚠️ Ctrl+/ 要綁兩個：extended-keys（CSI u）關閉時，終端機送出的其實是
+# 0x1F，tmux 認作 C-_。只綁 C-/ 在多數終端機按了不會有反應。
+rootkeys=$(tmux show-options -gqv '@agent_backlog_root_key')
+if [ -n "$rootkeys" ] && [ "$nokey" != "on" ]; then
+    for rk in $rootkeys; do
+        tmux bind-key -n "$rk" run-shell "sh '$DIR/scripts/open.sh'"
+    done
 fi
 
 # 給使用者自己綁用的：run-shell "sh #{@agent_backlog_path}/scripts/open.sh"

@@ -100,8 +100,18 @@ prod 上 KYC 縮圖開不出來，7d 82 筆。' | sh scripts/add.sh prod-kyc-thu
 | option | 預設 | 說明 |
 |---|---|---|
 | `@agent_backlog_key` | `A` | 開清單的鍵（在 prefix 之後） |
+| `@agent_backlog_root_key` | — | 不需要 prefix 的鍵，空白分隔可給多個 |
 | `@agent_backlog_no_key` | — | 設 `on` 就完全不綁鍵，自己綁 |
 | `@agent_backlog_compat` | — | 設 `on` 就連舊版的 `@prompt` / `@status` 一起認 |
+
+想用 `Ctrl+/` 這種不需要 prefix 的鍵：
+
+```tmux
+set -g @agent_backlog_root_key 'C-/ C-_'
+```
+
+> **`Ctrl+/` 一定要綁兩個。** extended-keys（CSI u）關閉時，終端機送出的
+> 其實是 `0x1F`，tmux 認作 `C-_`。只綁 `C-/` 在多數終端機按了不會有反應。
 
 自己綁的話，路徑可以從 `@agent_backlog_path` 拿：
 
