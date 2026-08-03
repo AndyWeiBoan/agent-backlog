@@ -147,13 +147,23 @@ LAST_ID=""
 DIRTY=1
 W=0
 H=0
+PW=0
 TOOSMALL=0
+NEEDMEASURE=0
 
 measure() {
     # 尺寸只在開始與 resize 時量。每次重畫都問 tmux 的話，
-    # 光這兩次 round trip 就佔掉每鍵成本的一大塊。
+    # 光這幾次 round trip 就佔掉每鍵成本的一大塊。
     W=$(tmux display -p -t "$LPANE" '#{pane_width}')
     H=$(tmux display -p -t "$LPANE" '#{pane_height}')
+    # 預覽窗格的寬度要傳給 md.awk，code block 的框線才畫得到右緣。
+    # 寬度變了就得把 render 快取丟掉重畫，否則框線會停在舊寬度。
+    npw=$(tmux display -p -t "${RPANE:-$LPANE}" '#{pane_width}' 2>/dev/null)
+    if [ "${npw:-0}" != "$PW" ]; then
+        PW=${npw:-0}
+        rm -f "$CACHE"/* 2>/dev/null
+        LAST_ID=""
+    fi
 }
 
 refresh_items() {
@@ -198,17 +208,20 @@ draw_preview() {
     LAST_ID=$id
 
     f="$CACHE/${id#@}"
-    [ -f "$f" ] || ab_prompt "$id" | awk -f "$DIR/md.awk" > "$f"
+    # 每行結尾補 \033[K（清到行尾），這樣重畫時就不需要清整個畫面。
+    # \033[2J 是肉眼可見的一閃，換頁面時特別明顯。
+    [ -f "$f" ] || ab_prompt "$id" | awk -v w="$PW" -f "$DIR/md.awk" \
+        | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$f"
 
-    # 順序有講究：先清畫面，再清 history，最後才寫新內容。
-    # 反過來（先清 history 再寫）的話，新內容會把舊畫面「推」進 history，
-    # 捲到頂看到的是上一則的尾巴，不是這一則的標題。
+    # 先清 history 再寫，寫的時候用 \033[H 覆蓋而不是 \033[2J 清空 ——
+    # 清整個畫面是肉眼看得到的一閃，換選項時會一直閃。
+    # 覆蓋式重畫靠每行結尾的 \033[K 清掉舊字，最後再 \033[J 清掉底下殘留。
+    # 內容超過一頁時照樣會捲進（剛清空的）history，history-top 仍然回得到頂端。
     #
     # tmux 指令用 \; 串起來一次送完，少幾次 round trip。
     tmux send-keys -t "$RPANE" -X cancel \; set-option -g "$K_CURSOR" "$id" 2>/dev/null
-    printf '\033[H\033[2J' > "$FIFO"
     tmux clear-history -t "$RPANE" 2>/dev/null
-    cat "$f" > "$FIFO"
+    { printf '\033[H'; cat "$f"; printf '\033[J'; } > "$FIFO"
 
     # 捲到頂：預設 pane 停在尾端，標題會看不到。
     # 捲動與折行都交給 tmux，它算得對（含 CJK），還附 [n/m] 指示器。
@@ -263,12 +276,11 @@ cycle_status() {
 }
 
 # 調整中間分隔線。調完把寬度記到 global option，下次開起來一樣寬。
+# 只負責改尺寸。量測與重畫交給主迴圈統一做 ——
+# 連按 ⌥←→ 時每一步都重畫會閃到不行。
 widen() {
     tmux resize-pane -t "$LPANE" "$1" 4 2>/dev/null
-    measure
-    tmux set-option -g "$K_WIDTH" "$W" 2>/dev/null
-    LAST_ID=""          # 預覽也要跟著重印，因為 tmux 不會重排已印出的內容
-    DIRTY=1
+    NEEDMEASURE=1
 }
 
 clamp() {
@@ -321,10 +333,10 @@ process() {
             7)     dispatch ;;                                # C-g 派工
             20)    cycle_status ;;                            # C-t 切換狀態
             24)    remove ;;                                  # C-x 刪除（會先確認）
-            12)    measure
-                   tmux set-option -g "$K_WIDTH" "$W" 2>/dev/null   # 記住調過的寬度
-                   LAST_ID=""      # tmux 不會重排已印出的內容，預覽要重印
-                   DIRTY=1 ;;
+            # C-l：重畫。也是 client-resized / after-resize-pane 等 hook 的喚醒鍵。
+            # 這裡只記旗標 —— 實際量測與重畫在主迴圈做，才有機會先把
+            # 連續湧進來的 resize 事件吸收掉。
+            12)    NEEDMEASURE=1 ;;
             18)    refresh_items; CUR=1; LAST_ID=""; DIRTY=1 ;;          # C-r
             127|8) QUERY=$(printf '%s' "$QUERY" | sed 's/.$//')
                    CUR=1; DIRTY=1 ;;
@@ -403,6 +415,23 @@ while :; do
     fi
     eof=0
     process $batch          # 不加引號：靠 IFS 切成一個個位元組值
+
+    # resize 是連續事件 —— 拖曳分隔線、連按 ⌥←→、縮放終端機，
+    # 每一步都會叫醒我們一次。每次都量測＋重畫的話會閃個不停。
+    # 先等 100 ms 把後續吸收掉，安靜下來才量一次、畫一次。
+    if [ "$NEEDMEASURE" = 1 ]; then
+        while [ "$NEEDMEASURE" = 1 ]; do
+            NEEDMEASURE=0
+            stty min 0 time 1
+            more=$(readbytes)
+            stty min 1 time 0
+            [ -n "$more" ] && process $more
+        done
+        measure
+        [ "${W:-0}" -gt 0 ] && tmux set-option -g "$K_WIDTH" "$W" 2>/dev/null
+        LAST_ID=""          # tmux 不會重排已印出的內容，預覽一定要重印
+        DIRTY=1
+    fi
 
     if [ "$DIRTY" = 1 ]; then
         draw_list

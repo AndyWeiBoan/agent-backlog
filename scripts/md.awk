@@ -28,6 +28,9 @@ BEGIN {
     # 關鍵字表：查表用大寫，所以 SQL 的大小寫寫法都吃得到
     sqlkw = "SELECT FROM WHERE AND OR NOT NULL INNER LEFT RIGHT OUTER JOIN ON GROUP ORDER BY HAVING AS SUM COUNT COALESCE DISTINCT INSERT INTO VALUES UPDATE SET DELETE CREATE INDEX TABLE LIMIT OFFSET CASE WHEN THEN ELSE END WITH UNION ALL IS IN EXISTS"
     cskw  = "PUBLIC PRIVATE PROTECTED INTERNAL SEALED CLASS INTERFACE RECORD STRUCT VAR AWAIT ASYNC RETURN NEW IF ELSE FOREACH FOR WHILE THROW TRY CATCH FINALLY USING NAMESPACE STATIC READONLY CONST TRUE FALSE NULL THIS BASE VOID TASK"
+    # 框線要畫到多寬。由呼叫端把預覽窗格的寬度傳進來（-v w=...）。
+    # 沒傳就給一個保守值 —— 寧可短，也不要換行造成階梯狀的破框。
+    if (w + 0 < 8) w = 56
     n = split(sqlkw, a, " "); for (i = 1; i <= n; i++) { KWSET["sql|" a[i]] = 1 }
     n = split(cskw,  a, " "); for (i = 1; i <= n; i++) { KWSET["cs|"  a[i]] = 1 }
     fence = 0
@@ -39,10 +42,15 @@ BEGIN {
         fence = 1
         lang = substr($0, 4)
         gsub(/[ \t]+$/, "", lang)
-        printf "%s┌─%s%s%s\n", BAR, (lang == "" ? "" : " " B lang R BAR " "), "─────", R
+        # 上框：┌─ lang ──────…── 一路畫到窗格右緣。
+        # 原本這裡是寫死的五個「─」，看起來像畫到一半沒收尾。
+        head = (lang == "" ? "" : " " lang " ")
+        printf "%s┌─%s%s%s\n", BAR,
+               (lang == "" ? "" : " " B lang R BAR " "),
+               dash(w - 2 - length(head)), R
     } else {
         fence = 0
-        printf "%s└──────%s\n", BAR, R
+        printf "%s└%s%s\n", BAR, dash(w - 1), R
     }
     next
 }
@@ -57,7 +65,7 @@ fence == 1 {
 /^# /   { printf "\n%s█ %s%s\n", H1, substr($0, 3), R; next }
 
 # ── 水平線 ───────────────────────────────────────────────────
-/^---+$/ { printf "%s────────────────────────────────%s\n", BAR, R; next }
+/^---+$/ { printf "%s%s%s\n", BAR, dash(w), R; next }
 
 # ── 引用 ─────────────────────────────────────────────────────
 /^> / { printf "%s▏%s %s\n", BAR, QUO, inline(substr($0, 3)) R; next }
@@ -79,6 +87,12 @@ fence == 1 {
 }
 
 { print inline($0) }
+
+function dash(n_,   o) {
+    o = ""
+    while (n_ > 0) { o = o "─"; n_-- }
+    return o
+}
 
 # ── 行內樣式 ─────────────────────────────────────────────────
 function inline(s,   out, i, n, parts) {
