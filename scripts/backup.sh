@@ -11,11 +11,15 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 out=${1:-$HOME/agent-backlog-$(date +%Y%m%d-%H%M%S).dump}
 : > "$out"
 n=0
+# 標頭用 @@ITEM2 而不是 @@ITEM：多了優先度欄位。
+# 舊的 dump（@@ITEM，只有標題與狀態）restore.sh 還是讀得懂 ——
+# 不能用「數欄位」去猜版本，因為 window 名稱本身可以有空白。
 ab_items | while IFS= read -r line; do
     id=$(printf '%s' "$line" | cut -f1)
     st=$(printf '%s' "$line" | cut -f2)
     nm=$(printf '%s' "$line" | cut -f3)
-    printf '@@ITEM %s %s\n' "$nm" "${st:-pending}" >> "$out"
+    pr=$(printf '%s' "$line" | cut -f4)
+    printf '@@ITEM2 %s\t%s\t%s\n' "$nm" "${st:-pending}" "${pr:-1}" >> "$out"
     ab_prompt "$id" >> "$out"
 done
 n=$(grep -c '^@@ITEM' "$out" 2>/dev/null || echo 0)

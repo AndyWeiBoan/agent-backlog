@@ -339,6 +339,30 @@ cycle_status() {
     DIRTY=1
 }
 
+# 優先度 ±1。夾範圍交給 ab_set_priority，這裡只管加減。
+#
+# 改完游標要跟著那一則跑 —— 因為清單是照優先度排的，加分之後它會往上跳，
+# 游標留在原位就會變成選到別則。這是唯一一個「改了資料，選擇要跟著移動」的操作。
+bump_priority() {
+    id=$(selected_id)
+    [ -z "$id" ] && return
+    _p=$(awk -F"$US" -v w="$id" '$1==w {print $4; exit}' "$ITEMS")
+    case $_p in ''|*[!0-9]*) _p=1 ;; esac
+    ab_set_priority "$id" "$((_p + $1))"
+    refresh_items
+
+    # 重算 MATCH 但不畫到螢幕上。
+    #
+    # 為什麼要多這一步：list.awk 的篩選規則（index(tolower(標題))）只該有一份，
+    # 在這裡重寫一次遲早會跟本尊分岔。draw_list 的 stdout 就是畫面，
+    # 丟到 /dev/null 就只留下它寫進 MATCH 的那份副作用 —— 沒有重複邏輯，也不會閃。
+    draw_list > /dev/null
+    _new=$(awk -F"$US" -v w="$id" '$1==w {print NR; exit}' "$MATCH" 2>/dev/null)
+    [ -n "$_new" ] && CUR=$_new
+    clamp
+    DIRTY=1
+}
+
 # 調整中間分隔線。調完把寬度記到 global option，下次開起來一樣寬。
 # 只負責改尺寸。量測與重畫交給主迴圈統一做 ——
 # 連按 ⌥←→ 時每一步都重畫會閃到不行。
@@ -432,6 +456,12 @@ process() {
             # C-l：重畫。也是 client-resized 與 after-resize-pane 兩個 hook 的喚醒鍵。
             7)     dispatch ;;                                # C-g 派工
             20)    cycle_status ;;                            # C-t 切換狀態
+            # C-k / C-j：優先度 +1 / -1（vim 的上下）。
+            # 可印字元全被篩選吃掉了，所以只能用控制鍵。
+            # 10 是 LF —— 在 raw 模式下 ICRNL 是關的，Enter 送的是 13（CR），
+            # 所以 10 拿來當 C-j 不會跟 Enter 打架。
+            11)    bump_priority 1 ;;                         # C-k 提高
+            10)    bump_priority -1 ;;                        # C-j 降低
             24)    remove ;;                                  # C-x 刪除（會先確認）
             # C-l：重畫。也是 client-resized / after-resize-pane 等 hook 的喚醒鍵。
             # 這裡只記旗標 —— 實際量測與重畫在主迴圈做，才有機會先把

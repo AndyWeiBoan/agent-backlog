@@ -6,6 +6,7 @@ K_PROMPT="@${PREFIX}_prompt"
 K_STATUS="@${PREFIX}_status"
 K_CURSOR="@${PREFIX}_cursor"     # 目前選中的 window_id，存成 global option
                                  # 理由：client-resized hook 是另一個行程，讀不到 sh 變數
+K_PRIORITY="@${PREFIX}_priority" # 1..10，越大越先做。沒設 = 1
 K_RETURN="@${PREFIX}_return"     # 開選單之前所在的 window，取消時回去
 K_WIDTH="@${PREFIX}_width"       # 左窗格寬度，記住使用者調過的
 
@@ -52,17 +53,95 @@ case $AB_LANG in zh|zh-TW|zh_TW) AB_LANG=zh ;; *) AB_LANG=en ;; esac
 AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
 [ -z "$AB_SCOPE" ] && AB_SCOPE=session
 
-# 列出待辦：window_id US 狀態 US 標題
+# 列出待辦：window_id US 狀態 US 標題 US 優先度
 # $1 可覆寫範圍（session / global），給選單的即時切換用。
+#
+# 排序在這裡做，不在呼叫端 —— 選單、MCP、backup 全部走這支，
+# 所以「順序」只有一個定義。不然人看到的順序會跟 agent 看到的不一樣。
+#
+# LC_ALL=C 是為了讓標題的比較是位元組序：三種 awk 一致，跟系統 locale 無關。
+# 沒有它的話同一份清單在不同機器上順序會不同。
+#
+# ⚠️ 用 $DIR 找 sort.awk。每個進入點都在 source 這個檔之前設好 DIR
+# （add.sh、chooser.sh、mcp-server.sh…），這是這個專案既有的約定。
 ab_items() {
     _scope=${1:-$AB_SCOPE}
+    _fmt="#{window_id}${US}${AB_STATUS_F}${US}#{window_name}${US}#{$K_PRIORITY}"
     if [ "$_scope" = session ] && [ -n "${AB_SESSION:-}" ]; then
-        tmux list-windows -t "$AB_SESSION" -f "$AB_FILTER" \
-            -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
+        tmux list-windows -t "$AB_SESSION" -f "$AB_FILTER" -F "$_fmt"
     else
-        tmux list-windows -a -f "$AB_FILTER" \
-            -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
-    fi
+        tmux list-windows -a -f "$AB_FILTER" -F "$_fmt"
+    fi | LC_ALL=C awk -f "${DIR:-.}/sort.awk"
+}
+
+# 讓某個 session 的 window 順序等於清單順序。
+#
+# 為什麼要做這件事：清單的排序只影響我們畫出來的東西，tmux 自己的 window 列表、
+# 狀態列、C-b w 全部照 window_index 排。不同步的話，同一批待辦從兩個門進來
+# 看到的先後不一樣。
+#
+# ⚠️ swap-window 會改動「當前 window」，所以事後一定要選回來。
+#
+# tmux 的當前 window 是記 index 的。實測：人在 win 2 看某一則，
+# swap 2↔4 之後人還在 win 2，但那已經是另一則了（@154 變成 @156）。
+#
+# `-d` 不能解決這件事 —— 它只是換一種挑法。實測：active 是完全無關的 win 0
+# （非待辦），swap 完之後當前變成了 -s 那個 window。
+# 我第一次「驗證 -d 有效」是假陽性，當時 active 剛好就是 -s。
+#
+# 所以做法是：先記下原本的當前 window_id，換完再 select-window 選回去。
+# 那個 after-select-window 的 hook 是幂等的（選到哪個 window 就設對應的
+# key-table），所以多這一次 select 不會弄壞選單的按鍵。
+#
+# 全部指令用 \; 串成一次呼叫。這是按鍵路徑（C-k / C-j 會連按），
+# 十幾次 round trip 會直接吃掉我們壓下來的延遲。
+ab_sync_order() {
+    [ -n "${AB_NO_SYNC:-}" ] && return 0
+    _s=$1
+    [ -z "$_s" ] && return 0
+    _act=$(tmux display -p -t "$_s" '#{window_id}' 2>/dev/null)
+    {
+        tmux list-windows -t "$_s" -f "$AB_FILTER" \
+            -F "S${US}#{window_index}${US}#{window_id}" 2>/dev/null
+        # ⚠️ 不要寫成 `AB_SESSION=$_s ab_items session`。前置賦值套在**函式**上，
+        # POSIX 說行為未定義，而實測在 macOS 的 /bin/sh 上會外洩 ——
+        # 呼叫結束後 AB_SESSION 還是被改掉的值。
+        # 這個 { } 是管線左側，本身就是 subshell，所以直接指定就好，不會外洩。
+        AB_SESSION=$_s
+        ab_items session | awk -F"$US" '{print "D\t" $1}'
+    } | awk -f "${DIR:-.}/reorder.awk" \
+      | {
+          # ⚠️ 這裡不能用 eval 組字串。session id 長得像「$8」——
+          # eval 會把它當成第 8 個位置參數展開，變成空的或別的東西
+          # （實測：'$16:2' 經過 eval 變成 '6:2'）。
+          # 用位置參數累積，tmux "$@" 一次送完，字串永遠不會被二次展開。
+          set --
+          while read -r a b; do
+              [ $# -gt 0 ] && set -- "$@" ';'
+              set -- "$@" swap-window -d -s "$_s:$a" -t "$_s:$b"
+          done
+          # 已經是對的順序 → 一個 swap 都不用，也就不必呼叫 tmux
+          if [ $# -gt 0 ]; then
+              # 把人選回原本那個 window（不是原本那個 index）
+              [ -n "$_act" ] && set -- "$@" ';' select-window -t "$_act"
+              tmux "$@" 2>/dev/null
+          fi
+          : ; }
+}
+
+# 從 window_id 反推它住在哪個 session。優先度與狀態都是「那則自己的事」，
+# 所以重排的範圍是它所在的 session，跟使用者當下看的是 session 還是 global 無關。
+ab_session_of() { tmux display -p -t "$1" '#{session_id}' 2>/dev/null; }
+
+# 寫優先度。夾在 1..10 —— 超出範圍的值會讓排序看起來像壞掉，
+# 而這個值有三個來源（人按鍵、MCP、手動 set-option），在最靠資料的地方夾一次最省。
+ab_set_priority() {
+    _p=$2
+    case $_p in ''|*[!0-9]*) _p=1 ;; esac
+    [ "$_p" -lt 1 ]  && _p=1
+    [ "$_p" -gt 10 ] && _p=10
+    tmux set-option -w -t "$1" "$K_PRIORITY" "$_p" 2>/dev/null
+    ab_sync_order "$(ab_session_of "$1")"
 }
 
 # 取某則的原始 markdown。
@@ -73,6 +152,9 @@ ab_prompt() {
 }
 
 # 寫狀態。相容模式下要寫回「這則原本用的那個 key」，否則就分岔了。
+#
+# 狀態也是排序鍵（done 會沉底），所以改完一樣要同步 window 順序。
+# 漏掉這裡的話會出現「標成 done 之後清單裡沉下去了，狀態列卻還在原位」。
 ab_set_status() {
     if [ "$AB_COMPAT" = on ] &&
        [ -z "$(tmux show-options -w -qv -t "$1" "$K_PROMPT" 2>/dev/null)" ]; then
@@ -80,4 +162,5 @@ ab_set_status() {
     else
         tmux set-option -w -t "$1" "$K_STATUS" "$2" 2>/dev/null
     fi
+    ab_sync_order "$(ab_session_of "$1")"
 }

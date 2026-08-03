@@ -111,8 +111,8 @@ Claude Code 內建的 TodoWrite 做不到 —— 那是單一 session 內的步�
 - **macOS 或 Linux**（其他平台在載入時就會被擋下）
 - **tmux 3.0 以上** —— 實測過 3.4 與 3.6a
 
-就這樣。只用到 `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep`
-`mkfifo` `mktemp` —— 全是 POSIX，你的機器上都有。
+就這樣。只用到 `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep` `sort`
+`date` `dirname` `cat` `rm` `mkfifo` `mktemp` —— 全是 POSIX，你的機器上都有。
 
 ## 安裝
 
@@ -163,6 +163,7 @@ MCP server **也是零依賴的** —— POSIX `sh` + `awk`，連 JSON 解析器
 | `Enter` | 切到該待辦的 window |
 | `C-g` | 派工：在那裡啟動 `claude` 並把內容貼進去 |
 | `C-t` | 輪替狀態（pending → blocked → done） |
+| `C-k` `C-j` | 優先度 +1 / -1（1–10，預設 1） |
 | `C-x` | 刪除（先問 `y`/`n`） |
 | `Tab` | 切換範圍：本 session ⇄ 全部 session |
 | `C-r` | 重新讀取清單 |
@@ -180,9 +181,32 @@ prod 上 KYC 縮圖開不出來，7d 82 筆。' \
 備份／還原（待辦活在 tmux server 記憶體裡，見[取捨與副作用](#取捨與副作用)）：
 
 ```sh
-sh scripts/backup.sh              # → ~/agent-backlog-<時間>.dump
-sh scripts/restore.sh <檔名>       # 已存在的同名會跳過
+sh scripts/backup.sh                      # → ~/agent-backlog-<時間>.dump
+sh scripts/restore.sh <檔名> [session]     # 同名的會跳過，不覆蓋
 ```
+
+> `restore.sh` 會印出它要還原到哪個 session。不指定的話用當前 session ——
+> 從 script 或別的 session 跑起來時，「當前」不一定是你以為的那個。
+
+## 清單順序
+
+清單不是照 window 建立順序排的，是照這三個鍵：
+
+1. **`done` 沉底** —— 做完的是噪音，但刪掉它是另一個決定。沉底讓板子自己保持乾淨，
+   而你想回頭看它還在
+2. **優先度降冪** —— `C-k` / `C-j` 調，1–10，預設 1
+3. **標題升冪** —— 因為命名本來就帶著意圖。`GS-6861-K0 K1 K2 …` 這種編號不用
+   另外標任何東西就會排對；照 window 順序反而會出現 `K2 K9 K3`（K9 比 K3 早建）
+
+**人和 agent 看到同一個順序** —— 排序寫在 `ab_items()` 裡，選單、MCP 的 `list`、
+`backup` 全部走那一支。
+
+而且 **tmux 自己的 window 順序也會跟著對齊** —— 狀態列、`C-b w`、`prefix + 數字`
+看到的先後跟清單一致。優先度或狀態一改就同步一次（`swap-window -d`），
+所以「從哪個門進來」都是同一個順序。
+
+只在待辦佔住的那些 window index 之間互換，**非待辦的 window 一個都不會動**
+（你的 shell、正在跑的 claude、選單自己），index 的空缺也維持原樣。
 
 ## 設定
 
@@ -213,7 +237,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## 給 agent 用（MCP）
 
-八個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
+九個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
 
 | 工具 | agent 拿它做什麼 |
 |---|---|
@@ -224,7 +248,8 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 | `peek` | 抓那個實例的畫面追進度 |
 | `check` | 把待辦裡的 checklist 項目打勾 —— `- [ ]` → `- [x]` |
 | `append` | 把結論寫回待辦，不動到原本的內容 |
-| `set_status` | 標記 blocked / done |
+| `set_status` | 標記 blocked / done —— 標成 done 會自動沉到清單底部 |
+| `set_priority` | 把某件事浮到最上面（1–10）—— 跟人看到的是同一個排序 |
 
 **刻意沒有 `delete`，也沒有「整份取代」。** 刪除是人的動作；而這個系統沒有版本
 歷史、沒有 undo —— 一次糟糕的呼叫不該能洗掉你寫的東西。所以給 agent 的是**窄的**
@@ -239,12 +264,13 @@ agent 跟你用同樣的範圍規則 —— 它從繼承來的 `TMUX_PANE` 反�
 
 ## 運作方式
 
-**儲存就是 tmux 本身。** 每則待辦是一個 window，帶兩個 user option：
+**儲存就是 tmux 本身。** 每則待辦是一個 window，帶三個 user option：
 
 | option | 存什麼 |
 |---|---|
 | `@agent_backlog_prompt` | 原始 markdown（也就是派工用的 prompt） |
 | `@agent_backlog_status` | pending / running / blocked / done（任意字串） |
+| `@agent_backlog_priority` | 1–10，越大越先做。沒設 = 1 |
 
 「這是不是待辦」== 「這個 window 有沒有 prompt option」。不用同步，沒有第二份事實。
 
@@ -263,7 +289,7 @@ code fence 加 SQL/C# 關鍵字級高亮。在 BWK awk（macOS）、busybox awk�
 tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`，包含 `\uXXXX` 還原（有些 client 會把
 非 ASCII 全部逃逸，不還原的話中文全變成 `?`）。
 
-全部加起來約 1,500 行。
+全部加起來約 2,200 行。
 
 ## 取捨與副作用
 
@@ -277,10 +303,51 @@ tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`，包含 `\uXXXX` 還原�
 內容重要的話請用 `scripts/backup.sh`。用 `tmux-resurrect` hook 做持久化是規劃中，
 還沒做。
 
+每則有三個會一起消失的欄位：內容、狀態、優先度。`backup.sh` 三個都會帶
+（`@@ITEM2` 格式）；但**舊格式的 dump（`@@ITEM`）沒有優先度欄位，還原回來會全變 1**。
+
+### 標題是排序鍵
+
+清單最後照標題排，所以用 tmux 的 `,` 改 window 名稱會**改變那則在清單裡的位置**
+（連 window index 也會跟著重排）。以前 window name 只是個標籤，現在它是介面的一部分。
+
+而中文標題是照 **UTF-8 位元組**排的，不是筆劃也不是拼音 —— ASCII 全部排在中文前面。
+`GS-6861-K*` 這種編號命名不受影響，但標題開頭是中文的話，順序在人眼裡會像隨機的。
+
+### agent 可以改你的 window 佈局
+
+一次 MCP `set_priority` 或 `set_status` 會重排你那個 session 的待辦 window。
+這是「兩個順序一致」換來的，但要講明白：**這是交給 agent 的一個實質權力**。
+
+### `done` 沉底讓累積的垃圾更不顯眼
+
+沉底讓板子看起來乾淨，但二十則 done 還是二十個 window 掛在底下。
+它降低了你想清掉它們的動機 —— 沒有 `delete` 的 MCP 工具，清掉是你的事。
+
+### `scope=global` 時兩個順序不會一致
+
+清單是跨 session 混排的；window 重排只在各自 session 內做。
+所以 global 範圍下的清單順序，跟任何單一 session 的 window 順序都對不起來。
+這不是 bug，是兩件事的定義域不同。
+
+### 改優先度／狀態會多 26–51ms
+
+那幾個鍵（`C-k` `C-j` `C-t`）要多做一次 window 順序同步：讀兩次 window 列表、
+算排列、最多一次批次 tmux 呼叫。方向鍵與篩選不受影響。
+
 ### N 則待辦就是 N 個 window
 
 二十則待辦就是 window 列表裡二十個閒置的 window。這是「讓待辦和工作區成為同一個
 物件」的代價。如果你會長期累積幾十則，這個設計會讓你不舒服。
+
+### 改優先度／狀態會重排你的 window index
+
+為了讓 tmux 的 window 順序跟清單一致，改完之後會用 `swap-window -d` 重排。
+**待辦 window 的 index 會變**，所以 `prefix + 數字` 對某一則的對應關係不是固定的。
+非待辦的 window 不會動，你正在看的那則也不會被換走 —— 因為 tmux 的「當前 window」
+是記 index 的，所以我們會先記下原本的 window，換完再選回去。
+
+如果你有自己手動安排 window 位置的習慣，這件事會蓋掉那個安排。
 
 ### 清單開著的時候會接管按鍵
 

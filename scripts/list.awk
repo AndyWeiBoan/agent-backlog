@@ -1,6 +1,7 @@
 # 畫整個左窗格：查詢列、計數、清單、底部提示。一支 awk 印完，不另外開行程。
 #
-# 輸入：ab_items 的輸出（window_id TAB 狀態 TAB 標題）
+# 輸入：ab_items 的輸出（window_id TAB 狀態 TAB 標題 TAB 優先度）
+#       —— 已經排序好了（見 sort.awk），這裡只負責篩選與畫，不重排。
 # 變數：q（查詢原文，awk 自己轉小寫）、cur（游標，1-based）、w（欄寬）、h（欄高）、
 #       total（總則數）、mf（命中清單輸出檔）
 #
@@ -19,6 +20,8 @@ BEGIN {
     DIM = E "2m"
     OK  = E "38;5;108m"
     RUN = E "38;5;214m"         # running 用暖色，一眼分得出來
+    PRI = E "38;5;110m"         # 優先度 2-6：淡藍，存在但不搶眼
+    PRIH= E "1;38;5;203m"       # 優先度 7-10：粗體紅，要一眼看到
     EL  = E "K"                 # 清到行尾
     CHARAWARE = (length("錢") == 1)   # 這台的 awk 是逐字元還是逐位元組
     # 介面文字。預設英文；lang=zh 切繁中。
@@ -27,14 +30,14 @@ BEGIN {
         T_THIS  = "· 本 session（Tab 看全部）"
         T_ALL   = "· 全部 session（Tab 切回本 session）"
         T_EMPTY = "沒有符合的待辦"
-        T_HINT  = " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  Tab 範圍  ESC 離開"
+        T_HINT  = " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-k/C-j 優先度  C-x 刪除  Tab 範圍  ESC 離開"
         T_HINT2 = " ↑↓ 選擇 · C-e/C-y 捲預覽 · Enter 切過去 · ESC 離開"
     } else {
         T_ITEMS = "items"
         T_THIS  = "· this session (Tab: all)"
         T_ALL   = "· all sessions (Tab: this one)"
         T_EMPTY = "no matching items"
-        T_HINT  = " ↑↓ select   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-x delete   Tab scope   ESC quit"
+        T_HINT  = " ↑↓ select   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-k/C-j priority   C-x delete   Tab scope   ESC quit"
         T_HINT2 = " ↑↓ select · C-e/C-y scroll · Enter switch · ESC quit"
     }
     ql = tolower(q)
@@ -50,6 +53,7 @@ BEGIN {
     print $0 > mf
     sts[n] = (f[2] == "" ? "-" : f[2])
     tis[n] = f[3]
+    prs[n] = (f[4] ~ /^[0-9]+$/) ? f[4] + 0 : 1
 }
 
 END {
@@ -66,13 +70,19 @@ END {
     } else {
         top = (cur > rows) ? cur - rows + 1 : 1   # 讓游標留在可視範圍內
         for (i = top; i <= n && i < top + rows; i++) {
-            # 狀態在前、固定寬 8 —— 純 ASCII，不需要算 East Asian Width。
+            # 優先度、狀態都在前、都是固定寬純 ASCII —— 不需要算 East Asian Width。
             # 標題放最後，中文再長也不會把後面的欄位推歪。
-            title = cutw(tis[i], w - 12)
+            #
+            # 優先度 1（預設）不印數字。大部分待辦都是 1，每行都印一個「1」
+            # 只是噪音；留白本身就表示「沒有特別指定」。
+            p = (prs[i] > 1) ? sprintf("%2d", prs[i]) : "  "
+            title = cutw(tis[i], w - 15)
             if (i == cur)
-                out(SEL pad(sprintf(" %-8s %s", sts[i], title), w - 1) R)
+                out(SEL pad(sprintf(" %s %-8s %s", p, sts[i], title), w - 1) R)
             else
-                out(sprintf(" %s%-8s%s %s", (sts[i] == "running" ? RUN : OK), sts[i], R, title))
+                out(sprintf(" %s%s%s %s%-8s%s %s",
+                            (prs[i] >= 7 ? PRIH : PRI), p, R,
+                            (sts[i] == "running" ? RUN : OK), sts[i], R, title))
         }
     }
     printf "%sJ", E

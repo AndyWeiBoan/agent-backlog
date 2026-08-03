@@ -118,8 +118,8 @@ where the work happens.
 - **macOS or Linux** (anything else is refused at load time)
 - **tmux ≥ 3.0** — tested on 3.4 and 3.6a
 
-That's it. Uses only `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep`
-`mkfifo` `mktemp` — all POSIX, all already on your machine.
+That's it. Uses only `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep` `sort`
+`date` `dirname` `cat` `rm` `mkfifo` `mktemp` — all POSIX, all already on your machine.
 
 ## Install
 
@@ -170,6 +170,7 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 | `Enter` | switch to that item's window |
 | `C-g` | dispatch: start `claude` there and paste the item in |
 | `C-t` | cycle status (pending → blocked → done) |
+| `C-k` `C-j` | raise / lower priority (1–10, default 1) |
 | `C-x` | delete (asks `y`/`n` first) |
 | `Tab` | toggle scope: this session ⇄ all sessions |
 | `C-r` | reload the list |
@@ -188,9 +189,36 @@ Back up / restore (items live in tmux server memory — see
 [Trade-offs](#trade-offs-and-side-effects)):
 
 ```sh
-sh scripts/backup.sh              # → ~/agent-backlog-<timestamp>.dump
-sh scripts/restore.sh <file>      # skips items that already exist
+sh scripts/backup.sh                     # → ~/agent-backlog-<timestamp>.dump
+sh scripts/restore.sh <file> [session]   # skips items that already exist
 ```
+
+> `restore.sh` prints which session it is restoring into. Without an argument it
+> uses the current session — and when run from a script or another session, "current"
+> is not necessarily the one you meant.
+
+## How the list is ordered
+
+Not by window creation order. By these three keys:
+
+1. **`done` sinks to the bottom** — a finished item is noise, but deleting it is a
+   separate decision. Sinking keeps the board tidy while leaving it there to look back at
+2. **Priority, descending** — `C-k` / `C-j`, 1–10, default 1
+3. **Title, ascending** — because how you name things already carries the intent.
+   Numbered items (`GS-6861-K0 K1 K2 …`) sort correctly with nothing else marked;
+   window order gives you `K2 K9 K3` instead, because K9 was created before K3
+
+**You and your agent see the same order** — the sort lives in `ab_items()`, and the
+chooser, the MCP `list`, and `backup` all go through it.
+
+**tmux's own window order is kept in sync too** — the status bar, `C-b w` and
+`prefix + <number>` show the same sequence as the list. Any change to priority or
+status re-syncs it (`swap-window -d`), so whichever door you come in through, the
+order is the same.
+
+Only indexes already occupied by backlog items are swapped, so **no non-backlog
+window ever moves** (your shell, a running claude, the chooser itself), and gaps in
+the numbering are preserved.
 
 ## Configuration
 
@@ -223,7 +251,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## For agents (MCP)
 
-Eight tools — this is what makes the main agent an orchestrator rather than a
+Nine tools — this is what makes the main agent an orchestrator rather than a
 note-taker:
 
 | Tool | What the agent does with it |
@@ -235,7 +263,8 @@ note-taker:
 | `peek` | capture that instance's screen to follow its progress |
 | `check` | tick a checklist item inside an item — `- [ ]` → `- [x]` |
 | `append` | write findings back into the item without touching what's there |
-| `set_status` | mark blocked / done |
+| `set_status` | mark blocked / done — a `done` item sinks to the bottom of the list |
+| `set_priority` | float something to the top (1–10) — same ordering the human sees |
 
 There is deliberately **no `delete`**, and no "replace the whole body" either.
 Deleting is a human action, and this system has no version history and no undo —
@@ -253,12 +282,13 @@ which breaks the one thing this project is for.
 
 ## How it works
 
-**Storage is tmux itself.** Each item is a window carrying two user options:
+**Storage is tmux itself.** Each item is a window carrying three user options:
 
 | Option | Holds |
 |---|---|
 | `@agent_backlog_prompt` | the raw markdown (also the dispatch prompt) |
 | `@agent_backlog_status` | pending / running / blocked / done (any string) |
+| `@agent_backlog_priority` | 1–10, higher first. Absent = 1 |
 
 "Is this an item?" == "does this window have a prompt option?" No sync, no second
 source of truth.
@@ -281,7 +311,7 @@ matter, so `json_get.awk` is a small tokenizer that flattens one JSON line into
 `path<TAB>value`, including `\uXXXX` decoding (some clients escape all non-ASCII;
 without decoding, every CJK character becomes `?`).
 
-Roughly 1,500 lines total.
+Roughly 2,200 lines total.
 
 ## Trade-offs and side effects
 
@@ -295,11 +325,58 @@ gone.** Closing an item's window deletes that item — there is no second copy.
 Use `scripts/backup.sh` if the content matters. Persistence via
 `tmux-resurrect` hooks is planned, not built.
 
+Three fields vanish together: body, status, priority. `backup.sh` carries all three
+(the `@@ITEM2` format) — but **older dumps (`@@ITEM`) have no priority field, so a
+restore from one flattens every priority back to 1**.
+
+### The title is a sort key
+
+The list falls back to title order, so renaming a window with tmux's `,` **moves that
+item in the list** (and renumbers windows along with it). The window name used to be
+just a label; now it is part of the interface.
+
+CJK titles sort by **UTF-8 bytes** — not stroke count, not pinyin — and all ASCII
+sorts before all CJK. Numbered schemes like `GS-6861-K*` are unaffected, but a title
+starting with CJK will land somewhere that looks arbitrary to a human.
+
+### Your agent can rearrange your windows
+
+One MCP `set_priority` or `set_status` reorders the backlog windows in that session.
+That is the price of keeping both orders in sync, but state it plainly: **it is a real
+power handed to the agent.**
+
+### Sinking `done` makes accumulated junk less visible
+
+Sinking keeps the board looking clean, but twenty done items are still twenty windows
+sitting at the bottom. It lowers your motivation to clear them — and there is no
+`delete` MCP tool, so clearing is your job.
+
+### Under `scope=global` the two orders will not match
+
+The list interleaves sessions; the window reorder happens within each session. So a
+global-scope list order matches no single session's window order. Not a bug — the two
+things are defined over different sets.
+
+### Changing priority or status costs 26–51ms
+
+Those keys (`C-k` `C-j` `C-t`) do an extra window-order sync: two window listings, a
+permutation, and at most one batched tmux call. Arrow keys and filtering are unaffected.
+
 ### N items means N windows
 
 Twenty items is twenty idle windows in your window list. That's the cost of making
 the item and its workspace the same object. If you keep dozens of long-lived items,
 this design will annoy you.
+
+### Changing priority or status renumbers your windows
+
+To keep tmux's window order matching the list, a change triggers `swap-window -d`.
+**Backlog window indexes move**, so `prefix + <number>` is not a stable handle for a
+given item. Non-backlog windows never move, and the item you're currently looking at
+isn't swapped out from under you — tmux tracks the current window *by index*, so the
+original window is recorded and re-selected once the swaps are done.
+
+If you arrange your windows by hand, this will override that arrangement.
 
 ### While the list is open, it takes over your keys
 

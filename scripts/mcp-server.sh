@@ -69,12 +69,13 @@ tools_json() {
 [
 {"name":"list","description":"列出全部待辦：id / 狀態 / 標題 / 該 window 目前跑什麼程式。「裡面在跑」是 tmux 直接回報的現實（shell = 還沒開始），不是記錄值。統籌分配前先看這個。","inputSchema":{"type":"object","properties":{}}},
 {"name":"show","description":"讀某一則的完整內容。target 可以是標題或 window_id（@數字）。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
-{"name":"add","description":"新增一則待辦。建立 detached window 並存內容，不會啟動 claude。","inputSchema":{"type":"object","properties":{"title":{"type":"string","description":"標題，會成為 window 名稱"},"body":{"type":"string","description":"內容（markdown）。派工時直接當 prompt"}},"required":["title","body"]}},
+{"name":"add","description":"新增一則待辦。建立 detached window 並存內容，不會啟動 claude。","inputSchema":{"type":"object","properties":{"title":{"type":"string","description":"標題，會成為 window 名稱"},"body":{"type":"string","description":"內容（markdown）。派工時直接當 prompt"},"priority":{"type":"number","description":"優先度 1..10，越大越先做。省略 = 1"}},"required":["title","body"]}},
 {"name":"dispatch","description":"派工：在該 window 啟動獨立的 claude 實例並把內容送進去，狀態轉 running。使用者可以 attach 進去接手。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
 {"name":"peek","description":"capture 該 window 目前的畫面，用來看派出去的進度。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
 {"name":"check","description":"把某一則裡的 checklist 項目打勾／取消打勾。用 index（第幾個 checkbox，1 起算）或 match（子字串）指定哪一個。刻意做成窄工具：只會換 [ ] 與 [x]，不會動到任何其他文字 —— 這個系統沒有 undo。要改內容請用 append。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"index":{"type":"number","description":"第幾個 checkbox，1 起算"},"match":{"type":"string","description":"用子字串找那一項（沒給 index 時用）"},"done":{"type":"boolean","description":"true = 打勾（預設），false = 取消"}},"required":["target"]}},
 {"name":"append","description":"在某一則的內容尾端追加一段 markdown。刻意只能追加不能覆寫 —— 派工出去的 agent 做完可以用這個把結論寫回待辦本身，而不會蓋掉原本的問題描述。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"text":{"type":"string","description":"要追加的 markdown"}},"required":["target","text"]}},
-{"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}}
+{"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。標成 done 之後那一則會自動沉到清單底部。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}},
+{"name":"set_priority","description":"設定優先度，1..10，越大越先做，預設 1。清單（人看到的和 list 回的）都照這個排序，所以這是「讓某件事浮到最上面」的方法。超出範圍會被夾住。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"priority":{"type":"number","description":"1..10"}},"required":["target","priority"]}}
 ]
 JSON
 }
@@ -140,9 +141,13 @@ while IFS= read -r line; do
                             _t="-a"
                         fi
                         # shellcheck disable=SC2086
+                        # 欄位順序要跟 sort.awk 的前四欄對上（id / 狀態 / 標題 /
+                        # 優先度），後面掛的東西它會原樣帶過去。
+                        # 排序走同一支，所以 agent 看到的順序跟人看到的一樣。
                         tmux list-windows $_t -f "$AB_FILTER" \
-                            -F "#{window_id}${US}${AB_STATUS_F}${US}#{pane_current_command}${US}#{session_name}${US}#{window_name}" \
-                        | awk -F"$US" '{printf "%s  %-8s %s  [%s]  (%s)\n", $1, ($2==""?"-":$2), $5, $4, $3}' \
+                            -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}${US}#{$K_PRIORITY}${US}#{pane_current_command}${US}#{session_name}" \
+                        | LC_ALL=C awk -f "$DIR/sort.awk" \
+                        | awk -F"$US" '{printf "%s  p%-2s %-8s %s  [%s]  (%s)\n", $1, $4, ($2==""?"-":$2), $3, $6, $5}' \
                             > "$BUF"
                     fi
                     reply_text "$id" "$BUF"
@@ -170,6 +175,13 @@ while IFS= read -r line; do
                     fi
                     tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
                     tmux set-option -w -t "$wid" "$K_STATUS" pending
+                    # 優先度選填。JSON number 可能帶小數點（3.0），先切掉。
+                    pr=$(get .params.arguments.priority | cut -d. -f1)
+                    if [ -n "$pr" ]; then
+                        ab_set_priority "$wid" "$pr"      # 裡面會同步 window 順序
+                    else
+                        ab_sync_order "$(ab_session_of "$wid")"
+                    fi
                     printf '已新增 %s（%s）' "$title" "$wid" > "$BUF"
                     reply_text "$id" "$BUF"
                     ;;
@@ -242,6 +254,21 @@ while IFS= read -r line; do
                     else
                         ab_set_status "$wid" "$st"
                         printf '%s 狀態改為 %s' "$wid" "$st" > "$BUF"
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                set_priority)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    # JSON number 可能是 7.0，cut 掉小數部分
+                    pr=$(get .params.arguments.priority | cut -d. -f1)
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        ab_set_priority "$wid" "$pr"
+                        # 回報夾過之後的實際值，agent 才知道 99 沒有生效
+                        printf '%s 優先度改為 %s' "$wid" \
+                            "$(tmux show-options -w -qv -t "$wid" "$K_PRIORITY")" > "$BUF"
                         reply_text "$id" "$BUF"
                     fi
                     ;;
