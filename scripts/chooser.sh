@@ -166,6 +166,9 @@ PW=0
 TOOSMALL=0
 NEEDMEASURE=0
 SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
+PREV_EMPTY=1            # 預覽窗格現在是不是空的。
+                        # 不能用 LAST_ID 代替 —— Tab / C-r / resize 都會把
+                        # LAST_ID 清掉來強制重畫，那樣就判斷不出「畫面上還有沒有東西」。
 
 measure() {
     # 尺寸只在開始與 resize 時量。每次重畫都問 tmux 的話，
@@ -216,10 +219,24 @@ draw_list() {
 
 selected_id() { sed -n "${CUR}p" "$MATCH" 2>/dev/null | cut -f1; }
 
+# 清空預覽窗格。清單變空時要叫，不然畫面停在上一則，看起來像還選著它。
+clear_preview() {
+    tmux send-keys -t "$RPANE" -X cancel 2>/dev/null
+    tmux clear-history -t "$RPANE" 2>/dev/null
+    printf '\033[H\033[J' > "$FIFO"
+    PREV_EMPTY=1
+}
+
 draw_preview() {
     [ "$TOOSMALL" = 1 ] && return
     id=$(selected_id)
-    [ -z "$id" ] && return
+    if [ -z "$id" ]; then
+        # 沒有選中項：篩選沒命中，或 Tab 切回本 session 而這裡沒有待辦。
+        # 早期版本這裡直接 return，預覽就停在上一則不動 —— 是回報過的 bug。
+        [ "$PREV_EMPTY" = 0 ] && clear_preview
+        LAST_ID=""
+        return
+    fi
     [ "$id" = "$LAST_ID" ] && return       # 選中項沒變就不用重畫
     LAST_ID=$id
 
@@ -242,6 +259,7 @@ draw_preview() {
     # 捲到頂：預設 pane 停在尾端，標題會看不到。
     # 捲動與折行都交給 tmux，它算得對（含 CJK），還附 [n/m] 指示器。
     tmux copy-mode -t "$RPANE" \; send-keys -t "$RPANE" -X history-top 2>/dev/null
+    PREV_EMPTY=0
 }
 
 scroll() { tmux send-keys -t "$RPANE" -X "$1" 2>/dev/null; }
@@ -443,6 +461,9 @@ while :; do
         while [ "$NEEDMEASURE" = 1 ]; do
             NEEDMEASURE=0
 SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
+PREV_EMPTY=1            # 預覽窗格現在是不是空的。
+                        # 不能用 LAST_ID 代替 —— Tab / C-r / resize 都會把
+                        # LAST_ID 清掉來強制重畫，那樣就判斷不出「畫面上還有沒有東西」。
             stty min 0 time 1
             more=$(readbytes)
             stty min 1 time 0
