@@ -65,6 +65,8 @@ flowchart LR
 所以預覽不是純文字傾印：
 
 - **標題、清單、引用、行內程式碼、水平線**
+- **checklist** —— `- [ ]` 與 `- [x]` render 成 ☐ / ☑，
+  agent 邊做可以邊用 `check` 工具打勾
 - **code block** 帶 SQL 與 C# 的關鍵字級高亮，框線畫到窗格邊緣。
   沒有 lexer 的語言（log、stack trace）原樣輸出 —— 那本來就不該上色
 - **可捲動** —— 一行（`C-e`/`C-y`）、半頁（`C-d`/`C-u`）、整頁（`C-f`/`C-b`），
@@ -202,7 +204,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## 給 agent 用（MCP）
 
-六個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
+八個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
 
 | 工具 | agent 拿它做什麼 |
 |---|---|
@@ -211,9 +213,13 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 | `show` | 決定之前先讀完某一則 |
 | `dispatch` | 把一則交給**獨立的 Claude Code 實例**，然後繼續做自己的事 |
 | `peek` | 抓那個實例的畫面追進度 |
+| `check` | 把待辦裡的 checklist 項目打勾 —— `- [ ]` → `- [x]` |
+| `append` | 把結論寫回待辦，不動到原本的內容 |
 | `set_status` | 標記 blocked / done |
 
-**刻意沒有 `delete`** —— 刪除是人的動作。
+**刻意沒有 `delete`，也沒有「整份取代」。** 刪除是人的動作；而這個系統沒有版本
+歷史、沒有 undo —— 一次糟糕的呼叫不該能洗掉你寫的東西。所以給 agent 的是**窄的**
+寫入：`append` 只能追加，`check` 只能把 `[ ]` 換成 `[x]`，其他每一個字元都不會動。
 
 註冊成 MCP 買到的是**可發現性**，不是功能：同樣的事 shell script 就做得到，
 但新開的 Claude Code session 根本不知道那些 script 存在。註冊之後每個 session

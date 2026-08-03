@@ -32,6 +32,7 @@
 | `scripts/mcp-server.sh` | 約 190 | MCP server（stdio JSON-RPC），給 agent 用 |
 | `scripts/mcp/json_get.awk` | 140 | JSON → `路徑<TAB>值`，含 `\uXXXX` 還原 |
 | `scripts/mcp/json_str.awk` | 14 | 字串 → JSON 跳脫 |
+| `scripts/mcp/check.awk` | 40 | 翻某一個 checkbox 的勾，其他字元不動 |
 
 依賴：`tmux` `sh` `awk` `stty` `dd` `od` `sed` `cut` `mkfifo` —— 全部 POSIX。
 沒有 node、python、fzf、jq。

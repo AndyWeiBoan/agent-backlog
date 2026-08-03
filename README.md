@@ -66,6 +66,8 @@ Items are notes you actually wrote — symptoms, log excerpts, a slow query, wha
 check. So the preview isn't a plain-text dump:
 
 - **Headings, lists, blockquotes, inline code, horizontal rules**
+- **Checklists** — `- [ ]` and `- [x]` render as ☐ / ☑, and an agent can tick them
+  off with the `check` tool as it works through the item
 - **Fenced code blocks** with keyword-level highlighting for SQL and C#, framed to
   the pane edge. Languages without a lexer (logs, stack traces) pass through
   untouched — which is what you want for them
@@ -210,7 +212,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## For agents (MCP)
 
-Six tools — this is what makes the main agent an orchestrator rather than a
+Eight tools — this is what makes the main agent an orchestrator rather than a
 note-taker:
 
 | Tool | What the agent does with it |
@@ -220,9 +222,15 @@ note-taker:
 | `show` | read one item in full before deciding |
 | `dispatch` | hand an item to a **separate Claude Code instance** and move on |
 | `peek` | capture that instance's screen to follow its progress |
+| `check` | tick a checklist item inside an item — `- [ ]` → `- [x]` |
+| `append` | write findings back into the item without touching what's there |
 | `set_status` | mark blocked / done |
 
-There is deliberately **no `delete`** — deleting is a human action.
+There is deliberately **no `delete`**, and no "replace the whole body" either.
+Deleting is a human action, and this system has no version history and no undo —
+one bad call must not be able to wipe what you wrote. So agents get **narrow**
+writes: `append` can only add, and `check` can only flip `[ ]` ⇄ `[x]`, leaving
+every other character alone.
 
 Registering as MCP buys **discoverability**, not capability: a shell script does
 the same work, but a fresh Claude Code session has no idea it exists. As an MCP

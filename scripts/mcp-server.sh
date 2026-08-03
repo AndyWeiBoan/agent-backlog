@@ -72,6 +72,8 @@ tools_json() {
 {"name":"add","description":"新增一則待辦。建立 detached window 並存內容，不會啟動 claude。","inputSchema":{"type":"object","properties":{"title":{"type":"string","description":"標題，會成為 window 名稱"},"body":{"type":"string","description":"內容（markdown）。派工時直接當 prompt"}},"required":["title","body"]}},
 {"name":"dispatch","description":"派工：在該 window 啟動獨立的 claude 實例並把內容送進去，狀態轉 running。使用者可以 attach 進去接手。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
 {"name":"peek","description":"capture 該 window 目前的畫面，用來看派出去的進度。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
+{"name":"check","description":"把某一則裡的 checklist 項目打勾／取消打勾。用 index（第幾個 checkbox，1 起算）或 match（子字串）指定哪一個。刻意做成窄工具：只會換 [ ] 與 [x]，不會動到任何其他文字 —— 這個系統沒有 undo。要改內容請用 append。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"index":{"type":"number","description":"第幾個 checkbox，1 起算"},"match":{"type":"string","description":"用子字串找那一項（沒給 index 時用）"},"done":{"type":"boolean","description":"true = 打勾（預設），false = 取消"}},"required":["target"]}},
+{"name":"append","description":"在某一則的內容尾端追加一段 markdown。刻意只能追加不能覆寫 —— 派工出去的 agent 做完可以用這個把結論寫回待辦本身，而不會蓋掉原本的問題描述。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"text":{"type":"string","description":"要追加的 markdown"}},"required":["target","text"]}},
 {"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}}
 ]
 JSON
@@ -189,6 +191,45 @@ while IFS= read -r line; do
                         reply_text "$id" "$BUF" 1
                     else
                         tmux capture-pane -pt "$wid" > "$BUF" 2>/dev/null
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                check)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        _idx=$(get .params.arguments.index)
+                        _mt=$(get .params.arguments.match)
+                        _dn=$(get .params.arguments.done)
+                        [ "$_dn" = false ] && _dn=0 || _dn=1
+                        ab_prompt "$wid" > "$TMP/body"
+                        awk -v idx="${_idx:-0}" -v match_="$_mt" -v done_="$_dn" \
+                            -v rf="$TMP/res" -f "$MCP/check.awk" "$TMP/body" > "$TMP/new"
+                        if [ "$(cut -f1 "$TMP/res")" = 1 ]; then
+                            tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/new")"
+                            printf '已更新：%s' "$(cut -f2 "$TMP/res")" > "$BUF"
+                            reply_text "$id" "$BUF"
+                        else
+                            printf '找不到符合的 checklist 項目（index=%s match=%s）' \
+                                "${_idx:-—}" "${_mt:-—}" > "$BUF"
+                            reply_text "$id" "$BUF" 1
+                        fi
+                    fi
+                    ;;
+                append)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        ab_prompt "$wid" > "$TMP/body"
+                        printf '\n' >> "$TMP/body"
+                        get .params.arguments.text \
+                            | awk '{gsub(/\\n/, "\n"); print}' >> "$TMP/body"
+                        tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
+                        printf '已追加到 %s' "$wid" > "$BUF"
                         reply_text "$id" "$BUF"
                     fi
                     ;;

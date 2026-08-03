@@ -18,6 +18,8 @@ BEGIN {
     COD = E "38;5;231;48;5;236m"  # inline code：淺字深底
     BAR = E "38;5;240m"   # 邊框
     QUO = E "38;5;108m"   # 引用
+    TODO = E "38;5;214m"  # 未打勾的框
+    DONE = E "38;5;42m"   # 打勾的框
 
     # 語法高亮用的色
     KW  = E "38;5;81m"    # 關鍵字
@@ -69,6 +71,20 @@ fence == 1 {
 
 # ── 引用 ─────────────────────────────────────────────────────
 /^> / { printf "%s▏%s %s\n", BAR, QUO, inline(substr($0, 3)) R; next }
+
+# ── 待辦清單（checklist）───────────────────────────────────────
+# 要在一般清單之前比對，否則 - [ ] 會先被當成普通項目。
+/^[ \t]*[-*] \[[ xX]\] / {
+    match($0, /^[ \t]*/)
+    ind = substr($0, 1, RLENGTH)
+    box = substr($0, RLENGTH + 3, 3)
+    rest = substr($0, RLENGTH + 7)
+    if (box ~ /\[[xX]\]/)
+        printf "%s%s☑%s %s%s%s\n", ind, DONE, R, DIM, inline(rest), R
+    else
+        printf "%s%s☐%s %s\n", ind, TODO, R, inline(rest)
+    next
+}
 
 # ── 清單 ─────────────────────────────────────────────────────
 /^[ \t]*[-*] / {
