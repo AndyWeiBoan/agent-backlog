@@ -1,10 +1,17 @@
 # agent-backlog
 
-**人與 AI agent 共享的待辦清單 —— 長在 tmux 裡。**
+**人與 AI agent 共享的待辦清單 —— 每一則都能交給一個獨立的 agent 去執行。**
 
 繁體中文 · [English](README.md)
 
-> 介面預設是英文。要中文請設 `set -g @agent_backlog_lang zh-TW`（上圖就是中文版）。
+> 介面預設是英文。要中文請設 `set -g @agent_backlog_lang zh-TW`（下圖就是中文版）。
+
+這不是一份提醒事項，是一塊**派工板**：每一則待辦本身就帶著執行它的 prompt，
+按一個鍵就變成一個活著的 Claude Code 實例，在它自己的 tmux window 裡工作 ——
+而你隨時可以走進去接手。
+
+待辦是你真的寫下的筆記，所以預覽會好好 render：markdown、語法高亮的程式碼、
+可捲動、中文寬度正確 —— 全部用 awk 寫，不用裝任何東西。
 
 零依賴。沒有資料庫、沒有 JSON 檔、沒有 Node、沒有 Python、不需要 `fzf`、不需要 `jq`。
 只用 tmux 和你機器上本來就有的 POSIX 工具。
@@ -13,7 +20,62 @@
 
 ---
 
-## 一句話說完核心
+## 最大的賣點：待辦是可以執行的
+
+每一則待辦裝的是描述這件事的 markdown。那段文字**本身就是 prompt**。
+所以一則待辦有兩條路變成正在進行的工作：
+
+**你自己派。** 選中它，按 `C-g`。一個 Claude Code 實例在那則待辦的 window 裡啟動，
+並收到待辦內容當 prompt，狀態轉成 `running`。
+
+**主 agent 幫你派。** 透過 MCP，你正在對話的那個 agent 可以 `list` 掌握全局、
+決定哪些自己做、哪些交出去，把其餘的 `dispatch` 給獨立實例，
+再用 `peek` 看它們的畫面追進度。
+
+```mermaid
+flowchart LR
+    A[跟主 agent<br/>討論的過程] -->|add| B[(待辦清單<br/>= tmux windows)]
+    B -->|"C-g（你）"| C[獨立的 agent<br/>在自己的 window]
+    B -->|"dispatch（主 agent）"| C
+    C -->|"Enter — 你走進去"| D[中途接手]
+    C -->|peek| A
+```
+
+主 agent 是統籌者：它分類、留下該自己做的、把其餘的派出去。
+否決權和鍵盤都還在你手上。
+
+## 為什麼這比背景任務好
+
+丟到背景執行的 agent 是 agent 自己的私有物。你看不到它的畫面、打不了字進去，
+關掉 client 也很麻煩。
+
+在這裡，被派工的 agent 跑在**一個跟其他 window 沒兩樣的 tmux window** 裡：
+
+- **你可以走進去。** 按 `Enter` 就在它的 session 裡，直接跟它對話
+- **agent 也看得到。** `peek` 抓的就是你會看到的同一個畫面
+- **狀態是觀察來的，不是記錄的。** `list` 回報那個 window 裡實際在跑什麼
+  （`zsh` = 還沒開始，否則就是在做事）—— 即時查 tmux，不可能脫節
+- **沒有隱藏的東西。** 同一個工具、同一個 window、同一組鍵，你和它共用
+
+這個對稱性就是整個設計：**你能做的 agent 也能做，反之亦然。**
+
+## 預覽會 render 你的 markdown
+
+待辦是你真的寫下的東西 —— 現象、log 片段、一段慢查詢、要查什麼。
+所以預覽不是純文字傾印：
+
+- **標題、清單、引用、行內程式碼、水平線**
+- **code block** 帶 SQL 與 C# 的關鍵字級高亮，框線畫到窗格邊緣。
+  沒有 lexer 的語言（log、stack trace）原樣輸出 —— 那本來就不該上色
+- **可捲動** —— 一行（`C-e`/`C-y`）、半頁（`C-d`/`C-u`）、整頁（`C-f`/`C-b`），
+  附 tmux 自己的 `[n/m]` 位置指示器
+- **中文寬度正確。** 折行交給 tmux 的 copy-mode，雙寬字元不會跑位
+
+全部是 **169 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
+不用 `rich`。在 BWK awk（macOS）、busybox awk、gawk 三種實作下輸出**逐位元組相同**，
+所以在你的筆電和 Alpine 容器裡長得一模一樣。
+
+## 底層的想法
 
 > **一則待辦，就是一個 tmux window。**
 
@@ -21,20 +83,17 @@ window 名稱是標題，內容存在 window 的 option 上。整個資料模型
 清單**就是**你的 window 列表，只是濾過。
 
 所以「待辦」和「執行它的地方」是**同一個物件**。不是一筆記錄指向某個工作區，
-而是根本就沒有記錄，只有工作區本身。
-
-- 按 `Enter` —— 不是「打開一筆記錄」，是**走進那個 window**
-- 按 `C-g` —— 一個 Claude Code 實例**就在那個 window 裡**啟動，用待辦內容當 prompt
-- agent 的 `list` 回報的「裡面在跑什麼」是即時查 tmux 得到的事實
-  （`zsh` = 還沒開始），不是一個會跟現實脫節的狀態欄位
+而是根本就沒有記錄，只有工作區本身。按 `Enter` 不是「打開一筆記錄」，
+是走進那個 window。
 
 ## 為什麼需要它
 
 跟 AI agent 一起工作時，待辦事項會不斷冒出來。你需要一份**兩邊都看得到**的清單，
 裡面的項目可以**交給獨立的 agent 實例執行**，而且你隨時能**親手接手**。
 
-Claude Code 內建的 TodoWrite 做不到這件事 —— 那是單一 session 內的步驟追蹤。
-這是另一種東西：活得比 session 久、人抓得到、而且長在工作發生的地方。
+Claude Code 內建的 TodoWrite 做不到 —— 那是單一 session 內的步驟追蹤，你看不到，
+而且裡面沒有任何東西是可執行的。這是另一種東西：活得比 session 久、人抓得到、
+而且長在工作發生的地方。
 
 ## 需求
 
@@ -143,7 +202,16 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## 給 agent 用（MCP）
 
-六個工具：`list` `show` `add` `dispatch` `peek` `set_status`。
+六個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
+
+| 工具 | agent 拿它做什麼 |
+|---|---|
+| `list` | 看整塊板子，包含每個 window 裡實際在跑什麼 |
+| `add` | 對話中冒出「這件事該做」時記下來，不打斷當前工作 |
+| `show` | 決定之前先讀完某一則 |
+| `dispatch` | 把一則交給**獨立的 Claude Code 實例**，然後繼續做自己的事 |
+| `peek` | 抓那個實例的畫面追進度 |
+| `set_status` | 標記 blocked / done |
 
 **刻意沒有 `delete`** —— 刪除是人的動作。
 

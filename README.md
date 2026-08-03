@@ -1,8 +1,16 @@
 # agent-backlog
 
-**A shared to-do list for you and your AI coding agents — living inside tmux.**
+**A backlog you and your AI agents share — where every item can be handed to its
+own agent and run.**
 
 [繁體中文](README.zh-TW.md) · English
+
+Not a list of reminders. A **dispatch board**: each item carries the prompt that
+runs it, and one keystroke turns it into a live Claude Code instance working in its
+own tmux window — which you can walk into and take over at any moment.
+
+Items are real notes, so the preview renders them properly: markdown, syntax-
+highlighted code, scrollable, CJK-aware — written in awk, with nothing installed.
 
 Zero dependencies. No database, no JSON store, no Node, no Python, no `fzf`, no `jq`.
 Just tmux and POSIX tools you already have.
@@ -11,31 +19,86 @@ Just tmux and POSIX tools you already have.
 
 ---
 
-## The idea in one line
+## The headline: items are runnable
+
+Every item holds the markdown that describes the work. That same text **is** the
+prompt. So an item has two ways to become work in progress:
+
+**You dispatch it.** Select it, press `C-g`. A Claude Code instance starts in that
+item's window and receives the item as its prompt. Status flips to `running`.
+
+**Your main agent dispatches it.** Through MCP, the agent you're already talking to
+can `list` the backlog, decide what to keep and what to delegate, and `dispatch` the
+rest to independent instances — then `peek` at their screens to follow along.
+
+```mermaid
+flowchart LR
+    A[Discussion with<br/>your main agent] -->|add| B[(Backlog<br/>= tmux windows)]
+    B -->|"C-g (you)"| C[Independent agent<br/>in its own window]
+    B -->|"dispatch (main agent)"| C
+    C -->|"Enter — you attach"| D[You take over<br/>mid-flight]
+    C -->|peek| A
+```
+
+The main agent stays the orchestrator: it triages, keeps what it should do itself,
+and farms out the rest. You keep the veto — and the keyboard.
+
+## Why this beats a background task
+
+An agent launched into the background is the agent's own private thing. You can't
+see its screen, you can't type into it, and closing your client is awkward.
+
+Here, a dispatched agent runs in **a tmux window like any other**. That means:
+
+- **You can attach.** Press `Enter` and you're in its session, typing to it directly
+- **Your agent can look.** `peek` captures the same screen you'd see
+- **Status is observed, not recorded.** `list` reports what's actually running in
+  that window (`zsh` = not started, otherwise it's working) — queried live from
+  tmux, so it can't drift out of sync
+- **Nothing is hidden.** Same tool, same window, same keys, for both of you
+
+That symmetry is the whole design: **anything you can do, the agent can do, and
+vice versa.**
+
+## The preview renders your markdown
+
+Items are notes you actually wrote — symptoms, log excerpts, a slow query, what to
+check. So the preview isn't a plain-text dump:
+
+- **Headings, lists, blockquotes, inline code, horizontal rules**
+- **Fenced code blocks** with keyword-level highlighting for SQL and C#, framed to
+  the pane edge. Languages without a lexer (logs, stack traces) pass through
+  untouched — which is what you want for them
+- **Scrollable** — one line (`C-e`/`C-y`), half page (`C-d`/`C-u`), full page
+  (`C-f`/`C-b`), with tmux's own `[n/m]` position indicator
+- **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
+  characters land where they should
+
+All of it in **169 lines of awk** with no renderer installed — no `glow`, no `bat`,
+no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
+and gawk, so it looks the same on your laptop and inside an Alpine container.
+
+## The idea underneath
 
 > **One backlog item *is* one tmux window.**
 
 The window name is the title. The body lives in a tmux window option. That's the
 whole data model — the list *is* your window list, filtered.
 
-Because of that, an item and *the place where the work happens* are the **same
-object**. There is no record pointing at a workspace; there is just the workspace.
-
-- Press `Enter` — you don't "open a record", you **walk into the window**
-- Press `C-g` — a Claude Code instance starts **in that window**, with the item's
-  text as its prompt
-- Your agent's `list` reports what is actually running there (`zsh` = not started
-  yet), queried live from tmux — not a status field that drifts out of sync
+So an item and *the place where the work happens* are the **same object**. There is
+no record pointing at a workspace; there is just the workspace. Pressing `Enter`
+doesn't "open a record" — it walks you into the window.
 
 ## Why it exists
 
 When you're working with an AI agent, action items surface constantly. You need a
-list that **both of you can see**, where items can be **handed to a separate agent
+list that **both of you can see**, whose items can be **handed to a separate agent
 instance**, and which you can **take over by hand** at any moment.
 
 Claude Code's built-in TodoWrite doesn't do that — it's step-tracking inside a
-single session. This is the other thing: work items that outlive the session, that
-a human can grab, and that live where the work happens.
+single session, invisible to you, and nothing in it is runnable. This is the other
+thing: work items that outlive the session, that a human can grab, and that live
+where the work happens.
 
 ## Requirements
 
@@ -147,7 +210,17 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## For agents (MCP)
 
-Six tools: `list` `show` `add` `dispatch` `peek` `set_status`.
+Six tools — this is what makes the main agent an orchestrator rather than a
+note-taker:
+
+| Tool | What the agent does with it |
+|---|---|
+| `list` | see the whole board, including what is actually running in each window |
+| `add` | capture "we should do that" mid-conversation, without derailing |
+| `show` | read one item in full before deciding |
+| `dispatch` | hand an item to a **separate Claude Code instance** and move on |
+| `peek` | capture that instance's screen to follow its progress |
+| `set_status` | mark blocked / done |
 
 There is deliberately **no `delete`** — deleting is a human action.
 
