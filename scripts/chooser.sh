@@ -35,6 +35,7 @@ cleanup() {
     stty "$STTY_SAVE" 2>/dev/null
     kt_off 2>/dev/null
     tmux set-hook -t "$SESS" -u after-select-window 2>/dev/null
+    tmux set-hook -t "$SESS" -u window-pane-changed 2>/dev/null
     for _hk in client-resized client-attached client-detached after-resize-pane; do
         tmux set-hook -t "$SESS" -u "$_hk" 2>/dev/null
     done
@@ -153,6 +154,20 @@ done
 # ~/.tmux.conf 裡已經是 root table 的 select-pane —— tmux 會先攔下來，
 # 那些位元組根本不會送到這支程式。跟終端機和使用者設定搶鍵是打不贏的。
 tmux set-hook -t "$SESS" after-resize-pane "send-keys -t $LPANE C-l"
+
+# 焦點跑到預覽窗格就彈回選單。
+#
+# 預覽窗格只是個 cat 迴圈，不讀鍵也不處理任何事 —— 焦點一旦落在那裡，
+# 使用者打的字會被 tty 回顯在畫面上，ESC / Enter 全部沒反應，
+# 看起來就是「選單卡死了，只能 C-c」。實際回報過。
+#
+# 焦點會跑過去的途徑：滑鼠點擊、prefix o、prefix 方向鍵…… 擋不完，
+# 所以不擋來源，改成「跑過去就馬上彈回來」。
+# 條件限定在我們這個 window 的預覽窗格，不會影響 session 裡其他 window。
+# 不會無限迴圈：彈回去之後 active pane 就不是它了，條件不成立。
+tmux set-hook -t "$SESS" window-pane-changed \
+    "if -F '#{&&:#{==:#{window_id},$MYWIN},#{==:#{pane_id},$RPANE}}' \
+        'select-pane -t $LPANE'" 2>/dev/null
 
 # ── 狀態 ──────────────────────────────────────────────
 QUERY=""

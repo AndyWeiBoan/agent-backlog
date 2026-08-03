@@ -124,6 +124,22 @@ MCP 的 stdio transport 就是換行分隔的 JSON-RPC 2.0。難點不在協定�
 實測：中文、emoji（含代理對）、引號、反引號、反斜線、換行，
 在三種 awk 上都能完整往返，並且**用真的 Claude Code client 驗過握手與帶參數的呼叫**。
 
+## 預覽窗格不接受焦點
+
+它只是 `while [ -p fifo ]; do cat fifo; done`，不讀鍵。焦點落進去的話使用者
+打的字會被 tty 回顯，而 ESC / Enter 什麼都不會發生 —— 看起來像整個選單卡死。
+
+途徑擋不完（滑鼠、`prefix o`、`prefix 方向鍵`……），所以不擋來源：
+
+```sh
+tmux set-hook -t "$SESS" window-pane-changed \
+    "if -F '#{&&:#{==:#{window_id},$MYWIN},#{==:#{pane_id},$RPANE}}' \
+        'select-pane -t $LPANE'"
+```
+
+跑過去就彈回來。不會無限迴圈 —— 彈回之後條件就不成立了。
+預覽窗格自己再 `stty -echo`，萬一有空隙也不會把畫面弄髒。
+
 ## 效能
 
 每按一鍵的成本（macOS，11 則）：
