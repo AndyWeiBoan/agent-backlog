@@ -17,6 +17,16 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 MCP="$DIR/mcp"
 PROTOCOL=2025-06-18
 
+# 這支是被主 Claude Code 啟動的，會繼承它的 TMUX_PANE —— 反查得到它在哪個 session。
+# 這件事很重要：@agent_backlog_scope 預設是 session，人只看得到自己 session 的待辦；
+# agent 這側如果不跟著 scope，人看到 0 則、agent 看到 11 則，
+# 就違反了「人和 agent 看同一份」這個第一原則。
+# 推不出來（例如 Claude Code 不是在 tmux 裡跑）就退回全域。
+AB_SESSION=""
+if [ -n "${TMUX_PANE:-}" ]; then
+    AB_SESSION=$(tmux display -p -t "$TMUX_PANE" '#{session_id}' 2>/dev/null)
+fi
+
 TMP=$(mktemp -d /tmp/ab-mcp.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT INT TERM HUP QUIT
 FIELDS="$TMP/fields"
@@ -122,7 +132,13 @@ while IFS= read -r line; do
                         # 順便把 pane_current_command 一起在 tmux 那邊取回來，省掉逐則查詢。
                         # 清單是整個 server 的，待辦可能散在不同 session ——
                         # 標出來 agent 才知道 dispatch 之後人要去哪裡找。
-                        tmux list-windows -a -f "$AB_FILTER" \
+                        if [ "$AB_SCOPE" = session ] && [ -n "$AB_SESSION" ]; then
+                            _t="-t $AB_SESSION"
+                        else
+                            _t="-a"
+                        fi
+                        # shellcheck disable=SC2086
+                        tmux list-windows $_t -f "$AB_FILTER" \
                             -F "#{window_id}${US}${AB_STATUS_F}${US}#{pane_current_command}${US}#{session_name}${US}#{window_name}" \
                         | awk -F"$US" '{printf "%s  %-8s %s  [%s]  (%s)\n", $1, ($2==""?"-":$2), $5, $4, $3}' \
                             > "$BUF"
@@ -143,7 +159,13 @@ while IFS= read -r line; do
                     title=$(get .params.arguments.title)
                     # body 裡的換行在解析時被壓成字面的 \n，這裡還原回真的換行
                     get .params.arguments.body | awk '{gsub(/\\n/, "\n"); print}' > "$TMP/body"
-                    wid=$(tmux new-window -d -n "$title" -P -F '#{window_id}')
+                    # 建在 agent 自己所在的 session —— 不指定的話會落在「當前
+                    # session」，那不一定是使用者那個，session scope 下他就看不到。
+                    if [ -n "$AB_SESSION" ]; then
+                        wid=$(tmux new-window -d -t "$AB_SESSION" -n "$title" -P -F '#{window_id}')
+                    else
+                        wid=$(tmux new-window -d -n "$title" -P -F '#{window_id}')
+                    fi
                     tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
                     tmux set-option -w -t "$wid" "$K_STATUS" pending
                     printf '已新增 %s（%s）' "$title" "$wid" > "$BUF"

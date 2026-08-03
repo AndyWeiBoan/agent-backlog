@@ -35,10 +35,30 @@ else
     AB_STATUS_F="#{$K_STATUS}"
 fi
 
-# 列出所有待辦：window_id US 狀態 US 標題
+# ── 範圍 ──────────────────────────────────────────────
+# @agent_backlog_scope = session（預設）只看自己 session 的待辦；global 看全部。
+#
+# 「屬於哪個 session」= 那個 window 現在住在哪個 session。
+# 不另外記「由誰建立」—— window 幾乎不會被 move-window 搬走，
+# 而且「東西在哪就歸哪」比「認出生地」直覺，也不會出現
+# 「這則明明在我眼前，清單卻說不屬於我」這種鬼故事。
+#
+# 呼叫端要先設 AB_SESSION（chooser 用自己的 $SESS，MCP 由 TMUX_PANE 反推）。
+# 推不出來就退回全域 —— 寧可多顯示，也不要讓人以為待辦不見了。
+AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
+[ -z "$AB_SCOPE" ] && AB_SCOPE=session
+
+# 列出待辦：window_id US 狀態 US 標題
+# $1 可覆寫範圍（session / global），給選單的即時切換用。
 ab_items() {
-    tmux list-windows -a -f "$AB_FILTER" \
-        -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
+    _scope=${1:-$AB_SCOPE}
+    if [ "$_scope" = session ] && [ -n "${AB_SESSION:-}" ]; then
+        tmux list-windows -t "$AB_SESSION" -f "$AB_FILTER" \
+            -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
+    else
+        tmux list-windows -a -f "$AB_FILTER" \
+            -F "#{window_id}${US}${AB_STATUS_F}${US}#{window_name}"
+    fi
 }
 
 # 取某則的原始 markdown。

@@ -41,7 +41,9 @@ END {
     # 改成游標歸位、逐行清到行尾，最後再清掉底下殘留。
     printf "%sH", E
     out(RUN "❯" R " " q DIM "▏" R)
-    out(sprintf("  %s%d/%d 則%s", DIM, n, total, R))
+    out(sprintf("  %s%d/%d 則%s  %s%s%s", DIM, n, total, R,
+                DIM, (scope == "global" ? "· 全部 session（Tab 切回本 session）" \
+                                        : "· 本 session（Tab 看全部）"), R))
     out("")
 
     if (n == 0) {
@@ -64,7 +66,7 @@ END {
     # 關掉自動換行（DECAWM）再寫，超出的直接被丟掉，就完全不用算顯示寬度 ——
     # 正好繞開 awk 算不了 East Asian Width 的老問題。
     printf "%s?7l%s%d;1H%s%s%s%s?7h", E, E, h, DIM,
-           " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  ESC 離開", R, E
+           " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  Tab 範圍  ESC 離開", R, E
 }
 
 function out(s) { printf "%s%s\r\n", s, EL }

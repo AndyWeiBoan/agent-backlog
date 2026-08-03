@@ -81,6 +81,7 @@ run-shell ~/3rd-party/agent-backlog/agent-backlog.tmux
 | `C-g` | 派工：在該 window 啟動 claude 並把內容送進去 |
 | `C-t` | 輪替狀態（pending → blocked → done） |
 | `C-x` | 刪除（會先問 y/n） |
+| `Tab` | 切換「本 session／全部」 |
 | `C-r` | 重新讀取清單 |
 | `ESC` `C-c` | 離開，回到開清單之前的 window |
 
@@ -103,6 +104,7 @@ prod 上 KYC 縮圖開不出來，7d 82 筆。' | sh scripts/add.sh prod-kyc-thu
 | `@agent_backlog_root_key` | — | 不需要 prefix 的鍵，空白分隔可給多個 |
 | `@agent_backlog_no_key` | — | 設 `on` 就完全不綁鍵，自己綁 |
 | `@agent_backlog_compat` | — | 設 `on` 就連舊版的 `@prompt` / `@status` 一起認 |
+| `@agent_backlog_scope` | `session` | `session` 只看本 session、`global` 看全部 |
 
 想用 `Ctrl+/` 這種不需要 prefix 的鍵：
 
@@ -174,15 +176,33 @@ done
 回滾永遠只是「不按那個鍵」—— 把 `.tmux.conf` 裡的 `run-shell` 那行拿掉，
 或 `tmux unbind A`。
 
-## 範圍：整個 tmux server，不分 session
+## 範圍：預設只看本 session
 
-清單用的是 `tmux list-windows -a` —— **掃整個 server**。所以不管你在哪個 session
-開清單，看到的都是同一份，跨 session 的待辦也在裡面。
+```tmux
+set -g @agent_backlog_scope session   # 預設
+set -g @agent_backlog_scope global    # 想看全部就改這個
+```
 
-按 `Enter` 時，如果那則在別的 session，會 `switch-client` 把你帶過去
-（只做 `select-window` 的話，你的 client 會留在原地，看起來像沒反應）。
+一則待辦就是一個 window，所以「屬於哪個 session」＝**那個 window 現在住在哪個
+session**。不另外記「由誰建立」—— window 幾乎不會被 `move-window` 搬走，
+而且「東西在哪就歸哪」比較直覺。
 
-範圍的邊界是**同一台機器的同一個 tmux server**。不同 server（不同 `TMUX_TMPDIR`）
+清單裡按 **`Tab`** 可以即時在「本 session／全部」之間切，標題列會顯示現在是哪個模式：
+
+```
+  3/3 則  · 本 session（Tab 看全部）
+  5/5 則  · 全部 session（Tab 切回本 session）
+```
+
+**agent 那側（MCP）跟著一起 scope。** 它從繼承來的 `TMUX_PANE` 反推自己在哪個
+session —— 不這樣做的話，你看到 0 則、agent 看到 11 則，就違反了
+「人和 agent 看同一份」這個前提。Claude Code 不是在 tmux 裡跑（沒有 `TMUX_PANE`）
+就退回全域。
+
+選 `global` 時，按 `Enter` 若那則在別的 session，會 `switch-client` 把你帶過去
+（只做 `select-window` 的話你的 client 會留在原地，看起來像沒反應）。
+
+範圍的外緣是**同一台機器的同一個 tmux server**。不同 server（不同 `TMUX_TMPDIR`）
 彼此看不到。
 
 ## 資料存在哪

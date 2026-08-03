@@ -60,6 +60,7 @@
 | `@agent_backlog_cursor` | 目前選中的 window_id（給 hook 讀，hook 是另一個行程） |
 | `@agent_backlog_return` | 開選單前所在的 window（取消時回去）。**session 層級**，各 session 各記各的 |
 | `@agent_backlog_width` | 左窗格寬度（記住使用者調過的） |
+| `@agent_backlog_scope` | `session`（預設）或 `global` |
 
 ## 鍵位
 
@@ -74,6 +75,7 @@ Enter       切到該待辦
 C-g         派工
 C-t         輪替狀態
 C-x         刪除（先問 y/n）
+Tab         切換「本 session／全部」
 C-r         重新讀取清單
 ESC / C-c   離開，回到開選單前的 window
 ```

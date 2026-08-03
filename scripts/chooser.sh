@@ -24,6 +24,7 @@ mkfifo "$FIFO"
 LPANE=$TMUX_PANE
 MYWIN=$(tmux display -p -t "$LPANE" '#{window_id}')
 SESS=$(tmux display -p -t "$LPANE" '#{session_id}')
+AB_SESSION=$SESS        # 給 lib.sh 的 ab_items 決定 scope 用
 STTY_SAVE=$(stty -g)
 RPANE=""
 TARGET=""
@@ -164,6 +165,7 @@ H=0
 PW=0
 TOOSMALL=0
 NEEDMEASURE=0
+SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
 
 measure() {
     # 尺寸只在開始與 resize 時量。每次重畫都問 tmux 的話，
@@ -181,7 +183,7 @@ measure() {
 }
 
 refresh_items() {
-    ab_items > "$ITEMS" 2>/dev/null || : > "$ITEMS"
+    ab_items "$SCOPE" > "$ITEMS" 2>/dev/null || : > "$ITEMS"
     TOTAL=$(wc -l < "$ITEMS" | tr -d ' ')
     rm -f "$CACHE"/*
 }
@@ -209,7 +211,7 @@ draw_list() {
 
     : > "$MATCH"
     awk -v q="$QUERY" -v cur="$CUR" -v w="$W" -v h="$H" -v total="$TOTAL" \
-        -v mf="$MATCH" -f "$DIR/list.awk" "$ITEMS"
+        -v scope="$SCOPE" -v mf="$MATCH" -f "$DIR/list.awk" "$ITEMS"
 }
 
 selected_id() { sed -n "${CUR}p" "$MATCH" 2>/dev/null | cut -f1; }
@@ -352,6 +354,10 @@ process() {
             # 連續湧進來的 resize 事件吸收掉。
             12)    NEEDMEASURE=1 ;;
             18)    refresh_items; CUR=1; LAST_ID=""; DIRTY=1 ;;          # C-r
+            # Tab：在「本 session」與「全部」之間切。
+            # 有這個逃生門，session scope 才不會變成「我明明建過怎麼不見了」。
+            9)     [ "$SCOPE" = session ] && SCOPE=global || SCOPE=session
+                   refresh_items; CUR=1; LAST_ID=""; DIRTY=1 ;;
             127|8) QUERY=$(printf '%s' "$QUERY" | sed 's/.$//')
                    CUR=1; DIRTY=1 ;;
             27)
@@ -436,6 +442,7 @@ while :; do
     if [ "$NEEDMEASURE" = 1 ]; then
         while [ "$NEEDMEASURE" = 1 ]; do
             NEEDMEASURE=0
+SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
             stty min 0 time 1
             more=$(readbytes)
             stty min 1 time 0
