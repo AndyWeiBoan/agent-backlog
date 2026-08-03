@@ -47,13 +47,13 @@ key=$(tmux show-options -gqv '@agent_backlog_key')
 nokey=$(tmux show-options -gqv '@agent_backlog_no_key')
 
 if [ "$nokey" != "on" ]; then
-    tmux bind-key "$key" run-shell "sh '$DIR/scripts/open.sh'"
+    tmux bind-key "$key" run-shell "sh '$DIR/scripts/open.sh' '#{session_id}'"
     # tmux 的鍵是區分大小寫的 —— 綁了 A，按 a 不會有任何反應，
     # 而且完全沒有錯誤訊息，看起來就像壞掉。單一字母就兩個大小寫都綁。
     case $key in
         [A-Za-z])
             alt=$(printf '%s' "$key" | tr 'A-Za-z' 'a-zA-Z')
-            tmux bind-key "$alt" run-shell "sh '$DIR/scripts/open.sh'"
+            tmux bind-key "$alt" run-shell "sh '$DIR/scripts/open.sh' '#{session_id}'"
             ;;
     esac
 fi
@@ -64,9 +64,10 @@ fi
 rootkeys=$(tmux show-options -gqv '@agent_backlog_root_key')
 if [ -n "$rootkeys" ] && [ "$nokey" != "on" ]; then
     for rk in $rootkeys; do
-        tmux bind-key -n "$rk" run-shell "sh '$DIR/scripts/open.sh'"
+        tmux bind-key -n "$rk" run-shell "sh '$DIR/scripts/open.sh' '#{session_id}'"
     done
 fi
 
-# 給使用者自己綁用的：run-shell "sh #{@agent_backlog_path}/scripts/open.sh"
+# 給使用者自己綁用的（記得把 #{session_id} 帶上）：
+#   run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_id}'"
 tmux set-option -g '@agent_backlog_path' "$DIR"

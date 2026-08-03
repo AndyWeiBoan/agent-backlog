@@ -58,7 +58,7 @@
 | `@agent_backlog_prompt` | 原始 markdown（`dispatch` 要拿它當 prompt） |
 | `@agent_backlog_status` | pending / running / blocked / done |
 | `@agent_backlog_cursor` | 目前選中的 window_id（給 hook 讀，hook 是另一個行程） |
-| `@agent_backlog_return` | 開選單前所在的 window（取消時回去） |
+| `@agent_backlog_return` | 開選單前所在的 window（取消時回去）。**session 層級**，各 session 各記各的 |
 | `@agent_backlog_width` | 左窗格寬度（記住使用者調過的） |
 
 ## 鍵位

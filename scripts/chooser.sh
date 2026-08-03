@@ -35,7 +35,7 @@ cleanup() {
     kt_off 2>/dev/null
     tmux set-hook -t "$SESS" -u after-select-window 2>/dev/null
     for _hk in client-resized client-attached client-detached after-resize-pane; do
-        tmux set-hook -gu "$_hk" 2>/dev/null
+        tmux set-hook -t "$SESS" -u "$_hk" 2>/dev/null
     done
     rm -rf "$TMP"
 }
@@ -55,7 +55,7 @@ finish() {
     # 沒有選任何東西（ESC / C-c）就回到開選單之前那個 window。
     # 不這樣做的話，殺掉自己之後 tmux 會自己挑一個，使用者會莫名掉在某則待辦的
     # shell 裡 —— 那個 shell 的提示字元跟原本的環境不一樣，看起來像換了台機器。
-    [ -z "$TARGET" ] && TARGET=$(tmux show-options -gqv "$K_RETURN" 2>/dev/null)
+    [ -z "$TARGET" ] && TARGET=$(tmux show-options -qv -t "$SESS" "$K_RETURN" 2>/dev/null)
 
     # 先把焦點移到目標 window，再殺掉自己這個 window。
     # 反過來做的話，殺掉 active window 會讓 tmux 自己挑下一個，蓋掉我們的選擇。
@@ -139,8 +139,10 @@ tmux set-hook -t "$SESS" after-select-window \
 # client-attached / client-detached 也要掛：另一個 client 離開時 session 會變回
 # 大尺寸，但 tmux 不會為此對剩下的 client 發 client-resized —— 少了這兩個，
 # 從「視窗太小」狀態就回不來。
+# 掛在 session 層級，不是 global —— 不同 session 各開各的選單時，
+# global hook 會互相覆蓋，而且先關掉的那個會把還開著的那個的 hook 一起清掉。
 for _hk in client-resized client-attached client-detached; do
-    tmux set-hook -g "$_hk" "send-keys -t $LPANE C-l"
+    tmux set-hook -t "$SESS" "$_hk" "send-keys -t $LPANE C-l"
 done
 
 # 調整分隔線寬度：不自己搶鍵，用 tmux 原本就有的 resize-pane（prefix + ⌥←→），
@@ -149,7 +151,7 @@ done
 # 為什麼不自己綁鍵：macOS 把 Ctrl+←→ 拿去切換桌面空間；而 Option+←→ 在使用者的
 # ~/.tmux.conf 裡已經是 root table 的 select-pane —— tmux 會先攔下來，
 # 那些位元組根本不會送到這支程式。跟終端機和使用者設定搶鍵是打不贏的。
-tmux set-hook -g after-resize-pane "send-keys -t $LPANE C-l"
+tmux set-hook -t "$SESS" after-resize-pane "send-keys -t $LPANE C-l"
 
 # ── 狀態 ──────────────────────────────────────────────
 QUERY=""

@@ -113,11 +113,12 @@ set -g @agent_backlog_root_key 'C-/ C-_'
 > **`Ctrl+/` 一定要綁兩個。** extended-keys（CSI u）關閉時，終端機送出的
 > 其實是 `0x1F`，tmux 認作 `C-_`。只綁 `C-/` 在多數終端機按了不會有反應。
 
-自己綁的話，路徑可以從 `@agent_backlog_path` 拿：
+自己綁的話，路徑可以從 `@agent_backlog_path` 拿，**並且要把 `#{session_id}` 帶上**
+（`run-shell` 會在按鍵當下展開它；少了它，選單可能開到別的 session 去）：
 
 ```tmux
 set -g @agent_backlog_no_key on
-bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh"
+bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_id}'"
 ```
 
 ## 給 agent 用（MCP）

@@ -300,6 +300,17 @@ exec tmux attach -t backlog
 - **寫到最後一列的最後一格會讓終端機捲一行**，把最上面那行頂掉。
   寫之前關掉自動換行（`\033[?7l` … `\033[?7h`），超出的直接被丟掉 ——
   這也順便繞開了「算不出中文顯示寬度」的問題
+- **`run-shell` 起來的行程沒有 client 脈絡**。在裡面 `tmux display -p '#{session_id}'`
+  拿到的是「當前 session」，不是使用者按鍵時所在的那個（實測：在 beta 按鍵，
+  裡面卻回 alpha）。正解是**綁鍵時就把它展開帶進去** ——
+  `run-shell "sh open.sh '#{session_id}'"`，run-shell 會在按鍵當下求值。
+  （這正是「`run-shell` 會先展開 `#{...}`」那個坑的反面利用）
+- **`new-window` 沒指定 `-t` 就是開在「當前 session」**，同上，不一定是使用者那個
+- **不要跨 session 找「已經開著的 UI window」**。用 `list-windows -a` 找到別的
+  session 的，然後 `select-window` —— 使用者畫面完全不動，按下去像壞掉。
+  UI window 應該每個 session 各一個
+- **hook 掛 global 會互相蓋掉**。不同 session 各開一份 UI 時，後開的覆蓋先開的，
+  先關的又把還開著的那份一起清掉。掛 `set-hook -t "$SESS"`
 - **`select-window` 不會把 client 帶到別的 session**。它只改那個 session 的
   當前 window，使用者的畫面不動 —— 看起來就是「按了沒反應」。清單是整個
   server 的（`list-windows -a`），所以跨 session 是常態，要補 `switch-client`
