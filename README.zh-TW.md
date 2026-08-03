@@ -4,22 +4,12 @@
 
 繁體中文 · [English](README.md)
 
+> 介面預設是英文。要中文請設 `set -g @agent_backlog_lang zh-TW`（上圖就是中文版）。
+
 零依賴。沒有資料庫、沒有 JSON 檔、沒有 Node、沒有 Python、不需要 `fzf`、不需要 `jq`。
 只用 tmux 和你機器上本來就有的 POSIX 工具。
 
-```
-❯ kyc                                    │ █ Prod: KYC 縮圖遺失
-  2/11 則 · 本 session（Tab 看全部）      │
-                                         │ ┃ 現象
-▌pending   prod-kyc-thumbnail-missing    │ ● prod，7d 82 筆
- blocked   prod-kyc-review-queue-stuck   │ ● 審核頁開不了圖
-                                         │
-                                         │ ┌─ sql ──────────────────────────────
-                                         │ │ SELECT t."PlayerId", t."Total"
-                                         │ │ FROM dbo."KycDocument" AS t
-                                         │ └────────────────────────────────────
- ↑↓ 選擇  C-e/C-y 捲預覽  Enter 切過去   │
-```
+![agent-backlog](assets/demo-zh.png)
 
 ---
 
@@ -133,6 +123,7 @@ sh scripts/restore.sh <檔名>       # 已存在的同名會跳過
 | `@agent_backlog_no_key` | — | `on` = 完全不綁，自己來 |
 | `@agent_backlog_scope` | `session` | `session` 或 `global` |
 | `@agent_backlog_compat` | — | `on` = 連舊版的 `@prompt` / `@status` 一起認 |
+| `@agent_backlog_lang` | `en` | 設 `zh-TW` 介面就變繁體中文 |
 
 想用 `Ctrl+/` 這種不需要 prefix 的鍵：
 

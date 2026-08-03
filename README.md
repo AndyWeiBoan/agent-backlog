@@ -7,19 +7,7 @@
 Zero dependencies. No database, no JSON store, no Node, no Python, no `fzf`, no `jq`.
 Just tmux and POSIX tools you already have.
 
-```
-❯ kyc                                    │ █ Prod: KYC thumbnails missing
-  2/11 items · this session (Tab: all)   │
-                                         │ ┃ Symptoms
-▌pending   prod-kyc-thumbnail-missing    │ ● prod, 82 hits in 7d
- blocked   prod-kyc-review-queue-stuck   │ ● review page can't load images
-                                         │
-                                         │ ┌─ sql ──────────────────────────────
-                                         │ │ SELECT t."PlayerId", t."Total"
-                                         │ │ FROM dbo."KycDocument" AS t
-                                         │ └────────────────────────────────────
- ↑↓ select  C-e/C-y scroll  Enter switch │
-```
+![agent-backlog](assets/demo.png)
 
 ---
 
@@ -137,6 +125,7 @@ sh scripts/restore.sh <file>      # skips items that already exist
 | `@agent_backlog_no_key` | — | `on` = bind nothing, do it yourself |
 | `@agent_backlog_scope` | `session` | `session` or `global` |
 | `@agent_backlog_compat` | — | `on` = also read legacy `@prompt` / `@status` |
+| `@agent_backlog_lang` | `en` | `zh-TW` switches the UI to Traditional Chinese |
 
 Want `Ctrl+/` instead of a prefix key:
 

@@ -10,6 +10,9 @@ set -u
 DIR=$(cd "$(dirname "$0")" && pwd)
 . "$DIR/lib.sh"
 
+# 訊息雙語：$1 中文、$2 英文
+msg() { [ "$AB_LANG" = zh ] && printf '%s' "$1" || printf '%s' "$2"; }
+
 id=${1:-}
 [ -z "$id" ] && { echo "用法: dispatch.sh <window_id>" >&2; exit 1; }
 
@@ -30,7 +33,7 @@ is_shell() {
 
 shell_before=$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)
 if ! is_shell "$shell_before"; then
-    tmux display-message -d 3000 "agent-backlog: 這則已經在跑了（$shell_before）"
+    tmux display-message -d 3000 "$(msg "agent-backlog: 這則已經在跑了（$shell_before）" "agent-backlog: already running ($shell_before)")"
     exit 0
 fi
 
@@ -38,7 +41,7 @@ f=$(mktemp /tmp/ab-dispatch.XXXXXX)
 ab_prompt "$id" > "$f"
 if [ ! -s "$f" ]; then
     rm -f "$f"
-    tmux display-message -d 3000 "agent-backlog: 這則沒有內容"
+    tmux display-message -d 3000 "$(msg "agent-backlog: 這則沒有內容" "agent-backlog: this item has no content")"
     exit 1
 fi
 
@@ -57,7 +60,7 @@ while [ "$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)" = "$
 done
 if [ "$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)" = "$shell_before" ]; then
     rm -f "$f"
-    tmux display-message -d 4000 "agent-backlog: claude 沒有起來（那個 pane 的 PATH 裡有嗎？）"
+    tmux display-message -d 4000 "$(msg "agent-backlog: claude 沒有起來（那個 pane 的 PATH 裡有嗎？）" "agent-backlog: claude did not start (is it on that pane PATH?)")"
     exit 1
 fi
 sleep 1        # 起來之後再給它一點時間畫完輸入框
@@ -71,4 +74,5 @@ sleep 1
 tmux send-keys -t "$id" Enter
 
 ab_set_status "$id" running
-tmux display-message -d 3000 "agent-backlog: 已派工給 $(tmux display -p -t "$id" '#{window_name}')"
+tmux display-message -d 3000 \
+    "agent-backlog: $(msg '已派工給' 'dispatched to') $(tmux display -p -t "$id" '#{window_name}')"

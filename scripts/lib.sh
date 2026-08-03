@@ -45,6 +45,10 @@ fi
 #
 # 呼叫端要先設 AB_SESSION（chooser 用自己的 $SESS，MCP 由 TMUX_PANE 反推）。
 # 推不出來就退回全域 —— 寧可多顯示，也不要讓人以為待辦不見了。
+# 介面語言。預設英文 —— 這是要公開的 plugin，繁中請設 @agent_backlog_lang zh-TW。
+AB_LANG=$(tmux show-options -gqv "@${PREFIX}_lang" 2>/dev/null)
+case $AB_LANG in zh|zh-TW|zh_TW) AB_LANG=zh ;; *) AB_LANG=en ;; esac
+
 AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
 [ -z "$AB_SCOPE" ] && AB_SCOPE=session
 

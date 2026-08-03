@@ -21,6 +21,22 @@ BEGIN {
     RUN = E "38;5;214m"         # running 用暖色，一眼分得出來
     EL  = E "K"                 # 清到行尾
     CHARAWARE = (length("錢") == 1)   # 這台的 awk 是逐字元還是逐位元組
+    # 介面文字。預設英文；lang=zh 切繁中。
+    if (lang == "zh") {
+        T_ITEMS = "則"
+        T_THIS  = "· 本 session（Tab 看全部）"
+        T_ALL   = "· 全部 session（Tab 切回本 session）"
+        T_EMPTY = "沒有符合的待辦"
+        T_HINT  = " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  Tab 範圍  ESC 離開"
+        T_HINT2 = " ↑↓ 選擇 · C-e/C-y 捲預覽 · Enter 切過去 · ESC 離開"
+    } else {
+        T_ITEMS = "items"
+        T_THIS  = "· this session (Tab: all)"
+        T_ALL   = "· all sessions (Tab: this one)"
+        T_EMPTY = "no matching items"
+        T_HINT  = " ↑↓ select   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-x delete   Tab scope   ESC quit"
+        T_HINT2 = " ↑↓ select · C-e/C-y scroll · Enter switch · ESC quit"
+    }
     ql = tolower(q)
     n = 0
     rows = h - 4                # 扣掉查詢列、計數列、空行、提示列
@@ -41,13 +57,12 @@ END {
     # 改成游標歸位、逐行清到行尾，最後再清掉底下殘留。
     printf "%sH", E
     out(RUN "❯" R " " q DIM "▏" R)
-    out(sprintf("  %s%d/%d 則%s  %s%s%s", DIM, n, total, R,
-                DIM, (scope == "global" ? "· 全部 session（Tab 切回本 session）" \
-                                        : "· 本 session（Tab 看全部）"), R))
+    out(sprintf("  %s%d/%d %s%s  %s%s%s", DIM, n, total, T_ITEMS, R,
+                DIM, (scope == "global" ? T_ALL : T_THIS), R))
     out("")
 
     if (n == 0) {
-        out(DIM "  沒有符合的待辦" R)
+        out(DIM "  " T_EMPTY R)
     } else {
         top = (cur > rows) ? cur - rows + 1 : 1   # 讓游標留在可視範圍內
         for (i = top; i <= n && i < top + rows; i++) {
@@ -62,11 +77,13 @@ END {
     }
     printf "%sJ", E
 
+    # 最後一列：窄的時候用短版提示。長版在一般寬度（左窗格約 50 欄）會被切掉，
+    # 切一半的提示比沒有提示更糟 —— 看起來像壞掉。
     # 最後一列：寫到最後一格會讓終端機捲一行，把查詢列頂掉。
     # 關掉自動換行（DECAWM）再寫，超出的直接被丟掉，就完全不用算顯示寬度 ——
     # 正好繞開 awk 算不了 East Asian Width 的老問題。
     printf "%s?7l%s%d;1H%s%s%s%s?7h", E, E, h, DIM,
-           " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-x 刪除  Tab 範圍  ESC 離開", R, E
+           (w >= 96 ? T_HINT : T_HINT2), R, E
 }
 
 function out(s) { printf "%s%s\r\n", s, EL }

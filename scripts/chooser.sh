@@ -82,10 +82,16 @@ finish() {
 _h=$(tmux display -p -t "$LPANE" '#{pane_height}')
 _w=$(tmux display -p -t "$LPANE" '#{pane_width}')
 if [ "${_h:-0}" -lt 10 ] || [ "${_w:-0}" -lt 40 ]; then
-    printf '視窗太小（%sx%s），至少要 40x10。\r\n' "${_w:-?}" "${_h:-?}"
-    printf '若有很小的 client 附著在同一個 session，tmux 會把大家一起縮小：\r\n'
-    printf '  tmux list-clients -F "#{client_tty} #{client_width}x#{client_height}"\r\n'
-    printf '按任意鍵關閉。\r\n'
+    if [ "$AB_LANG" = zh ]; then
+        printf '視窗太小（%sx%s），至少要 40x10。\r\n' "${_w:-?}" "${_h:-?}"
+        printf '同一個 session 若有很小的 client 附著，tmux 會把大家一起縮小：\r\n'
+        printf '按任意鍵關閉。\r\n'
+    else
+        printf 'Pane too small (%sx%s); needs at least 40x10.\r\n' "${_w:-?}" "${_h:-?}"
+        printf 'A tiny client attached to this session shrinks every pane in it:\r\n'
+        printf '  tmux list-clients -F "#{client_tty} #{client_width}x#{client_height}"\r\n'
+        printf 'Press any key to close.\r\n'
+    fi
     dd bs=1 count=1 >/dev/null 2>&1
     exit 1
 fi
@@ -102,7 +108,7 @@ _saved=$(tmux show-options -gqv "$K_WIDTH" 2>/dev/null)
 # 空的 target 對 tmux 來說等於「當前的」——  kill-window -t "" 會殺掉使用者
 # 正在看的 window。寧可整支不啟動，也不要拿空字串去下指令。
 if [ -z "$RPANE" ] || [ -z "$MYWIN" ]; then
-    printf '無法建立預覽窗格，中止（RPANE=%s MYWIN=%s）\r\n' "$RPANE" "$MYWIN"
+    printf 'Could not create the preview pane; aborting (RPANE=%s MYWIN=%s)\r\n' "$RPANE" "$MYWIN"
     dd bs=1 count=1 >/dev/null 2>&1
     exit 1
 fi
@@ -215,10 +221,13 @@ draw_list() {
         if [ "$TOOSMALL" = 0 ]; then
             TOOSMALL=1
             printf '\033[H\033[2J'
-            printf '視窗太小 %sx%s\r\n' "$W" "$H"
-            printf '有小 client 附著？\r\n'
+            if [ "$AB_LANG" = zh ]; then
+                printf '視窗太小 %sx%s\r\n\r\n有小 client 附著？\r\n' "$W" "$H"
+            else
+                printf 'Pane too small: %sx%s\r\n\r\nA tiny client attached?\r\n' "$W" "$H"
+            fi
             printf 'tmux list-clients\r\n'
-            printf 'tmux detach-client -t X\r\n'
+            printf 'tmux detach-client -t <tty>\r\n'
         fi
         return
     fi
@@ -229,7 +238,7 @@ draw_list() {
 
     : > "$MATCH"
     awk -v q="$QUERY" -v cur="$CUR" -v w="$W" -v h="$H" -v total="$TOTAL" \
-        -v scope="$SCOPE" -v mf="$MATCH" -f "$DIR/list.awk" "$ITEMS"
+        -v scope="$SCOPE" -v lang="$AB_LANG" -v mf="$MATCH" -f "$DIR/list.awk" "$ITEMS"
 }
 
 selected_id() { sed -n "${CUR}p" "$MATCH" 2>/dev/null | cut -f1; }
@@ -287,8 +296,12 @@ remove() {
     [ -z "$id" ] && return
     name=$(tmux display -p -t "$id" '#{window_name}' 2>/dev/null)
     # 提示畫在最後一列。關掉自動換行，長標題不會把畫面頂掉。
-    printf '\033[?7l\033[%d;1H\033[K\033[7m 刪除「%s」? y = 確定，其他鍵取消 \033[0m\033[?7h' \
-        "$H" "$name"
+    if [ "$AB_LANG" = zh ]; then
+        _q="刪除「$name」? y = 確定，其他鍵取消"
+    else
+        _q="Delete \"$name\"? y = yes, any other key = cancel"
+    fi
+    printf '\033[?7l\033[%d;1H\033[K\033[7m %s \033[0m\033[?7h' "$H" "$_q"
     k=$(readbytes)
     set -- $k
     if [ "${1:-}" = 121 ] || [ "${1:-}" = 89 ]; then      # y / Y
