@@ -164,7 +164,7 @@ MCP server **也是零依賴的** —— POSIX `sh` + `awk`，連 JSON 解析器
 | `C-g` | 派工：在那裡啟動 `claude` 並把內容貼進去 |
 | `C-t` | 輪替狀態（pending → blocked → done） |
 | `C-k` `C-j` | 優先度 +1 / -1（1–10，預設 1） |
-| `C-x` | 刪除（先問 `y`/`n`） |
+| `C-x` | 刪除（先問 `y`/`n`，刪前會 stash 到 tmux buffer） |
 | `Tab` | 切換範圍：本 session ⇄ 全部 session |
 | `C-r` | 重新讀取清單 |
 | `ESC` `C-c` | 離開，回到開清單之前的位置 |
@@ -237,7 +237,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## 給 agent 用（MCP）
 
-九個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
+十個工具 —— 這就是讓主 agent 從「記事的」變成「統籌的」的關鍵：
 
 | 工具 | agent 拿它做什麼 |
 |---|---|
@@ -250,10 +250,31 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 | `append` | 把結論寫回待辦，不動到原本的內容 |
 | `set_status` | 標記 blocked / done —— 標成 done 會自動沉到清單底部 |
 | `set_priority` | 把某件事浮到最上面（1–10）—— 跟人看到的是同一個排序 |
+| `delete` | 刪掉指名的一則 —— 綁得很緊，見下面 |
 
-**刻意沒有 `delete`，也沒有「整份取代」。** 刪除是人的動作；而這個系統沒有版本
-歷史、沒有 undo —— 一次糟糕的呼叫不該能洗掉你寫的東西。所以給 agent 的是**窄的**
-寫入：`append` 只能追加，`check` 只能把 `[ ]` 換成 `[x]`，其他每一個字元都不會動。
+**刻意沒有「整份取代」，也沒有批次刪除。** 這個系統沒有版本歷史、沒有 undo ——
+一次糟糕的呼叫不該能洗掉你寫的東西。所以給 agent 的是**窄的**寫入：
+`append` 只能追加，`check` 只能把 `[ ]` 換成 `[x]`，其他每一個字元都不會動。
+
+`delete` 有，但被綁得很緊：
+
+- **一次一則，而且必須指名 `target`。** 沒有萬用字元、沒有 `clear`、沒有「刪掉全部
+  done」。想清空板子的話 agent 得一則一則刪，每一則都要自己講出名字
+- **刪之前整則會被塞進 tmux buffer `agent_backlog_deleted`**（格式跟 `backup.sh`
+  的 dump 一樣），所以還有一次機會救：
+
+  ```sh
+  tmux show-buffer -b agent_backlog_deleted > /tmp/x
+  sh scripts/restore.sh /tmp/x
+  ```
+
+  只留最後一則（同名 buffer 會覆蓋）。這不是備份機制，是給「手滑」一次機會
+- **那個 window 裡有東西在跑就拒絕。** 包含被 `dispatch` 出去、正在工作的 claude，
+  也包含你自己開的 `vim`。要照樣刪得帶 `force: true`，那會殺掉那個行程
+- 工具說明裡明確要求：不確定該不該留的話用 `set_status` 標成 `done`，
+  讓你自己決定，不要主動刪
+
+人這邊的 `C-x` 也會先 stash 再刪 —— 按錯 `y` 沒有第二次機會，而那一行的成本幾乎是零。
 
 註冊成 MCP 買到的是**可發現性**，不是功能：同樣的事 shell script 就做得到，
 但新開的 Claude Code session 根本不知道那些 script 存在。註冊之後每個 session
@@ -322,7 +343,7 @@ tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`，包含 `\uXXXX` 還原�
 ### `done` 沉底讓累積的垃圾更不顯眼
 
 沉底讓板子看起來乾淨，但二十則 done 還是二十個 window 掛在底下。
-它降低了你想清掉它們的動機 —— 沒有 `delete` 的 MCP 工具，清掉是你的事。
+它降低了你想清掉它們的動機。而 `delete` 一次只能刪一則、必須指名，所以「清掉累積的 done」實務上還是你的事。
 
 ### `scope=global` 時兩個順序不會一致
 

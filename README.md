@@ -171,7 +171,7 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 | `C-g` | dispatch: start `claude` there and paste the item in |
 | `C-t` | cycle status (pending → blocked → done) |
 | `C-k` `C-j` | raise / lower priority (1–10, default 1) |
-| `C-x` | delete (asks `y`/`n` first) |
+| `C-x` | delete (asks `y`/`n` first; stashes to a tmux buffer before killing) |
 | `Tab` | toggle scope: this session ⇄ all sessions |
 | `C-r` | reload the list |
 | `ESC` `C-c` | leave, returning to where you came from |
@@ -251,7 +251,7 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 
 ## For agents (MCP)
 
-Nine tools — this is what makes the main agent an orchestrator rather than a
+Ten tools — this is what makes the main agent an orchestrator rather than a
 note-taker:
 
 | Tool | What the agent does with it |
@@ -265,12 +265,36 @@ note-taker:
 | `append` | write findings back into the item without touching what's there |
 | `set_status` | mark blocked / done — a `done` item sinks to the bottom of the list |
 | `set_priority` | float something to the top (1–10) — same ordering the human sees |
+| `delete` | remove one named item — heavily fenced, see below |
 
-There is deliberately **no `delete`**, and no "replace the whole body" either.
-Deleting is a human action, and this system has no version history and no undo —
-one bad call must not be able to wipe what you wrote. So agents get **narrow**
-writes: `append` can only add, and `check` can only flip `[ ]` ⇄ `[x]`, leaving
-every other character alone.
+There is deliberately **no "replace the whole body"** and **no batch delete**. This
+system has no version history and no undo — one bad call must not be able to wipe
+what you wrote. So agents get **narrow** writes: `append` can only add, and `check`
+can only flip `[ ]` ⇄ `[x]`, leaving every other character alone.
+
+`delete` exists, but it is fenced in:
+
+- **One item per call, and `target` is required.** No wildcards, no `clear`, no
+  "delete everything that's done". Emptying the board means the agent naming every
+  single item out loud
+- **The whole item is stashed into the tmux buffer `agent_backlog_deleted` first**
+  (same format as a `backup.sh` dump), so there is one chance to undo:
+
+  ```sh
+  tmux show-buffer -b agent_backlog_deleted > /tmp/x
+  sh scripts/restore.sh /tmp/x
+  ```
+
+  Only the most recent deletion is kept (the named buffer is overwritten). This is
+  not a backup mechanism; it's one chance after a slip
+- **Refused if something is running in that window** — including a dispatched claude
+  still working, and including a `vim` you left open. Overriding needs
+  `force: true`, which kills that process
+- The tool description tells the agent explicitly: when unsure whether something
+  should stay, mark it `done` with `set_status` and let the human decide
+
+The human's `C-x` stashes before deleting too — one wrong `y` has no second chance,
+and that line costs essentially nothing.
 
 Registering as MCP buys **discoverability**, not capability: a shell script does
 the same work, but a fresh Claude Code session has no idea it exists. As an MCP
@@ -348,8 +372,8 @@ power handed to the agent.**
 ### Sinking `done` makes accumulated junk less visible
 
 Sinking keeps the board looking clean, but twenty done items are still twenty windows
-sitting at the bottom. It lowers your motivation to clear them — and there is no
-`delete` MCP tool, so clearing is your job.
+sitting at the bottom. It lowers your motivation to clear them — and since `delete` takes one named item at
+a time, clearing a pile of done items is still your job in practice.
 
 ### Under `scope=global` the two orders will not match
 

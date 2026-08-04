@@ -307,6 +307,9 @@ remove() {
     k=$(readbytes)
     set -- $k
     if [ "${1:-}" = 121 ] || [ "${1:-}" = 89 ]; then      # y / Y
+        # 刪之前留最後一份副本到 tmux buffer。按錯 y 沒有第二次機會，
+        # 而這一行的成本幾乎是零。救回來的方式見 lib.sh 的 ab_stash。
+        ab_stash "$id"
         tmux kill-window -t "$id" 2>/dev/null
         refresh_items
         CUR=1

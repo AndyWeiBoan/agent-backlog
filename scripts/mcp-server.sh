@@ -75,7 +75,8 @@ tools_json() {
 {"name":"check","description":"把某一則裡的 checklist 項目打勾／取消打勾。用 index（第幾個 checkbox，1 起算）或 match（子字串）指定哪一個。刻意做成窄工具：只會換 [ ] 與 [x]，不會動到任何其他文字 —— 這個系統沒有 undo。要改內容請用 append。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"index":{"type":"number","description":"第幾個 checkbox，1 起算"},"match":{"type":"string","description":"用子字串找那一項（沒給 index 時用）"},"done":{"type":"boolean","description":"true = 打勾（預設），false = 取消"}},"required":["target"]}},
 {"name":"append","description":"在某一則的內容尾端追加一段 markdown。刻意只能追加不能覆寫 —— 派工出去的 agent 做完可以用這個把結論寫回待辦本身，而不會蓋掉原本的問題描述。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"text":{"type":"string","description":"要追加的 markdown"}},"required":["target","text"]}},
 {"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。標成 done 之後那一則會自動沉到清單底部。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}},
-{"name":"set_priority","description":"設定優先度，1..10，越大越先做，預設 1。清單（人看到的和 list 回的）都照這個排序，所以這是「讓某件事浮到最上面」的方法。超出範圍會被夾住。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"priority":{"type":"number","description":"1..10"}},"required":["target","priority"]}}
+{"name":"set_priority","description":"設定優先度，1..10，越大越先做，預設 1。清單（人看到的和 list 回的）都照這個排序，所以這是「讓某件事浮到最上面」的方法。超出範圍會被夾住。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"priority":{"type":"number","description":"1..10"}},"required":["target","priority"]}},
+{"name":"delete","description":"刪掉一則待辦（會關掉它的 tmux window）。一次只能刪一則，必須指名 target —— 沒有批次、沒有清空。刪之前整則會被塞進 tmux buffer agent_backlog_deleted，所以手滑還有一次機會救（tmux show-buffer -b agent_backlog_deleted）。如果那個 window 裡有東西在跑（包含被 dispatch 出去、正在工作的 claude），會被拒絕 —— 那要先確認它真的可以砍，再用 force。這個系統沒有 undo，所以除非使用者要你刪，不要主動刪；不確定該不該留的話用 set_status 標成 done，讓使用者自己決定。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id。不接受萬用字元，一次一則"},"force":{"type":"boolean","description":"true = 連「裡面有東西在跑」也照樣刪。會殺掉那個 pane 裡的行程"}},"required":["target"]}}
 ]
 JSON
 }
@@ -269,6 +270,29 @@ while IFS= read -r line; do
                         # 回報夾過之後的實際值，agent 才知道 99 沒有生效
                         printf '%s 優先度改為 %s' "$wid" \
                             "$(tmux show-options -w -qv -t "$wid" "$K_PRIORITY")" > "$BUF"
+                        reply_text "$id" "$BUF"
+                    fi
+                    ;;
+                delete)
+                    wid=$(resolve "$(get .params.arguments.target)")
+                    force=$(get .params.arguments.force)
+                    if [ -z "$wid" ]; then
+                        printf '找不到：%s' "$(get .params.arguments.target)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    elif [ "$force" != true ] && ! ab_is_idle "$wid"; then
+                        # 擋下來而不是砍掉。那個 pane 裡跑的可能是 dispatch 出去、
+                        # 正在工作的 claude，也可能是使用者自己開的 vim。
+                        printf '%s 裡面有東西在跑（%s），沒有刪。\n真的要刪就帶 force: true——那會殺掉那個行程。' \
+                            "$wid" "$(tmux display -p -t "$wid" '#{pane_current_command}' 2>/dev/null)" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                    else
+                        wname=$(tmux display -p -t "$wid" '#{window_name}' 2>/dev/null)
+                        wsess=$(ab_session_of "$wid")
+                        ab_stash "$wid"                 # 刪之前留最後一份副本
+                        tmux kill-window -t "$wid" 2>/dev/null
+                        ab_sync_order "$wsess"
+                        printf '已刪除 %s（%s）。內容還在 tmux buffer %s，要救回來：\n  tmux show-buffer -b %s > /tmp/x && sh scripts/restore.sh /tmp/x' \
+                            "$wname" "$wid" "$AB_STASH_BUF" "$AB_STASH_BUF" > "$BUF"
                         reply_text "$id" "$BUF"
                     fi
                     ;;

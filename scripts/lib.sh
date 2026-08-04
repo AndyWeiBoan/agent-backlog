@@ -133,6 +133,45 @@ ab_sync_order() {
 # 所以重排的範圍是它所在的 session，跟使用者當下看的是 session 還是 global 無關。
 ab_session_of() { tmux display -p -t "$1" '#{session_id}' 2>/dev/null; }
 
+# ── 刪除前的最後一份副本 ──────────────────────────────────
+#
+# 這個系統沒有 undo、沒有版本歷史、沒有持久化。刪掉就是真的沒了。
+# 所以刪之前把整則塞進一個具名的 tmux buffer，格式跟 backup.sh 的 dump 一樣，
+# 要救回來就是：
+#     tmux show-buffer -b agent_backlog_deleted > /tmp/x
+#     sh scripts/restore.sh /tmp/x
+#
+# 存進 tmux buffer 而不是寫檔，是因為這個工具本來就不在磁碟上放東西 ——
+# 而 buffer 剛好是 tmux 已經提供的暫存區，不用我們自己管生命週期。
+# 只留最後一則（buffer 同名會覆蓋）。這不是備份機制，是給「手滑」一次機會。
+AB_STASH_BUF="agent_backlog_deleted"
+ab_stash() {
+    _id=$1
+    _f=$(mktemp) || return 0
+    {
+        printf '@@ITEM2 %s\t%s\t%s\n' \
+            "$(tmux display -p -t "$_id" '#{window_name}' 2>/dev/null)" \
+            "$(tmux display -p -t "$_id" "$AB_STATUS_F" 2>/dev/null)" \
+            "$(tmux show-options -w -qv -t "$_id" "$K_PRIORITY" 2>/dev/null)"
+        ab_prompt "$_id"
+    } > "$_f"
+    tmux load-buffer -b "$AB_STASH_BUF" "$_f" 2>/dev/null
+    rm -f "$_f"
+}
+
+# 那個 window 裡有沒有東西在跑。
+#
+# 「有沒有在跑」是觀察來的，不是記錄的 —— 看 pane 實際在執行什麼。
+# ⚠️ 不能拿「等於 claude」來判斷：Claude Code 的 pane_current_command 是版本字串
+# （實測是 2.1.220），不是 claude。所以反過來問：是不是一個閒置的 shell。
+# 認不出來的一律當成「有東西在跑」，寧可擋下來也不要砍掉別人正在做的事。
+ab_is_idle() {
+    case $(tmux display -p -t "$1" '#{pane_current_command}' 2>/dev/null) in
+        sh|bash|zsh|fish|dash|ksh|mksh|ash|tcsh|csh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # 寫優先度。夾在 1..10 —— 超出範圍的值會讓排序看起來像壞掉，
 # 而這個值有三個來源（人按鍵、MCP、手動 set-option），在最靠資料的地方夾一次最省。
 ab_set_priority() {
