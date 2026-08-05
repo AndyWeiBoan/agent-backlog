@@ -76,10 +76,18 @@ check. So the preview isn't a plain-text dump:
 - **Fenced code blocks** with keyword-level highlighting for SQL and C#, framed to
   the pane edge. Languages without a lexer (logs, stack traces) pass through
   untouched — which is what you want for them
-- **Sequence diagrams** — a ```` ```mermaid ```` fence holding a `sequenceDiagram` (or a
-  PlantUML `@startuml` block) renders as an actual diagram: lifelines, arrows, dashed
-  replies, self-message loops, CJK-correct column widths. Anything it cannot parse
-  falls back to a plain code block, so the worst case is what you see today
+- **Diagrams** — a ```` ```mermaid ```` (or ```` ```plantuml ````) fence renders as an
+  actual diagram, in awk:
+  - `sequenceDiagram` / PlantUML messages — lifelines, arrows, dashed replies,
+    self-message loops
+  - `flowchart` / `graph` — Sugiyama layering with cycle breaking and dummy nodes for
+    long edges; parallel edges merge their labels, back edges become footnotes
+  - `erDiagram` — entities as attribute boxes plus an aligned relationship table
+    (`||--o{` becomes `1 ── 0..n`)
+  - `C4Context` / `C4Container` / `C4Component` — nested boundary boxes, `Rel()` listed
+
+  Everything is CJK-width-correct. Anything it cannot parse (`gantt`, `pie`, …) falls
+  back to a plain code block, so the worst case is what you see today
 - **Tables**, column-aligned with `│ ┼` separators, honouring `:---:` / `---:`
   alignment. Widths are computed from *display* width — an East Asian Width table
   lives in the awk, so CJK headers line up. When the table is wider than the pane,
@@ -96,7 +104,7 @@ check. So the preview isn't a plain-text dump:
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
-All of it in **473 lines of awk** with no renderer installed — no `glow`, no `bat`,
+All of it in **1,673 lines of awk** with no renderer installed — no `glow`, no `bat`,
 no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
 and gawk, so it looks the same on your laptop and inside an Alpine container.
 
@@ -364,7 +372,7 @@ fed through a fifo.
 just sends `send-keys -X page-down`. Wrapping, East-Asian character widths, and the
 `[n/m]` scroll indicator are all tmux's job, so they're correct for free.
 
-**Markdown rendering is 473 lines of awk** (`md.awk`) — headings, lists, inline
+**Markdown rendering is 1,673 lines of awk** (`md.awk` plus `width.awk` `seq.awk` `flow.awk` `er.awk` `c4.awk`) — headings, lists, inline
 code, blockquotes, fenced blocks with keyword-level SQL/C# highlighting. Byte-for-byte
 identical output across BWK awk (macOS), busybox awk, and gawk.
 
@@ -374,7 +382,7 @@ matter, so `json_get.awk` is a small tokenizer that flattens one JSON line into
 `path<TAB>value`, including `\uXXXX` decoding (some clients escape all non-ASCII;
 without decoding, every CJK character becomes `?`).
 
-Roughly 2,400 lines total.
+Roughly 3,000 lines total.
 
 ## Trade-offs and side effects
 

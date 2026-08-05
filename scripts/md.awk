@@ -83,7 +83,12 @@ nt > 0 && fence == 0 && $0 !~ /^[ \t]*\|/ { tflush() }
         fence = 0
         if (dia) {
             dia = 0
+            # 一支一支試，第一個認得的贏。每支不認得就回 ""。
+            # 順序無所謂 —— 四種語法的開頭關鍵字互斥。
             diaout = seq_render(DIA, dn)
+            if (diaout == "") diaout = flow_render(DIA, dn)
+            if (diaout == "") diaout = er_render(DIA, dn)
+            if (diaout == "") diaout = c4_render(DIA, dn)
             if (diaout != "") { printf "%s", diaout; next }
             # 認不出來（flowchart 之類）就退回 code block ——
             # 最壞情況是看到原始碼，跟沒有這個功能時一模一樣。

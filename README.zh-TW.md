@@ -72,9 +72,15 @@ flowchart LR
   會把字元格填滿，不像 ☐ ☑ 又小又細。agent 邊做可以邊用 `check` 工具打勾
 - **code block** 帶 SQL 與 C# 的關鍵字級高亮，框線畫到窗格邊緣。
   沒有 lexer 的語言（log、stack trace）原樣輸出 —— 那本來就不該上色
-- **時序圖** —— ```` ```mermaid ```` 裡放 `sequenceDiagram`（或 PlantUML 的 `@startuml`）
-  會畫成真的圖：生命線、箭頭、虛線回應、自我訊息的迴圈，中文寬度正確。
-  解析不出來的一律退回程式碼區塊，所以最壞情況就是你現在看到的樣子
+- **圖表** —— ```` ```mermaid ````（或 ```` ```plantuml ````）會畫成真的圖，用 awk：
+  - `sequenceDiagram` / PlantUML 訊息 —— 生命線、箭頭、虛線回應、自我訊息迴圈
+  - `flowchart` / `graph` —— Sugiyama 分層，含斷環與跨層邊的虛擬節點；
+    平行邊合併標籤，回邊列成註腳
+  - `erDiagram` —— 實體畫成欄位方塊，關係列成對齊的表（`||--o{` 翻成 `1 ── 0..n`）
+  - `C4Context` / `C4Container` / `C4Component` —— 巢狀邊界方塊，`Rel()` 列成表
+
+  中文寬度全部正確。解析不出來的（`gantt`、`pie`…）退回程式碼區塊，
+  所以最壞情況就是你現在看到的樣子
 - **表格**對齊分欄（`│ ┼`），支援 `:---:` 與 `---:` 的對齊宣告。
   欄寬按**顯示寬度**計算 —— East Asian Width 表就寫在 awk 裡，所以中文表頭對得齊。
   比窗格寬的時候，最寬的欄會縮，而 cell 內容**在欄內折行**（補白照補，
@@ -88,7 +94,7 @@ flowchart LR
   把 checklist 一項項勾掉時，你不用碰鍵盤就看得到
 - **中文寬度正確。** 折行交給 tmux 的 copy-mode，雙寬字元不會跑位
 
-全部是 **473 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
+全部是 **1,673 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
 不用 `rich`。在 BWK awk（macOS）、busybox awk、gawk 三種實作下輸出**逐位元組相同**，
 所以在你的筆電和 Alpine 容器裡長得一模一樣。
 
@@ -331,7 +337,7 @@ agent 跟你用同樣的範圍規則 —— 它從繼承來的 `TMUX_PANE` 反�
 **捲動交給 tmux。** 預覽窗格停在 copy-mode，選單只負責送 `send-keys -X page-down`。
 折行、東亞字元寬度、`[n/m]` 捲動指示器全部是 tmux 的工作 —— 所以免費就正確。
 
-**markdown render 是 473 行 awk**（`md.awk`）—— 標題、清單、行內程式碼、引用、
+**markdown render 是 1,673 行 awk**（`md.awk` 加上 `width.awk` `seq.awk` `flow.awk` `er.awk` `c4.awk`）—— 標題、清單、行內程式碼、引用、
 code fence 加 SQL/C# 關鍵字級高亮。在 BWK awk（macOS）、busybox awk、gawk 三種
 實作下輸出**逐位元組相同**。
 
@@ -340,7 +346,7 @@ code fence 加 SQL/C# 關鍵字級高亮。在 BWK awk（macOS）、busybox awk�
 tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`，包含 `\uXXXX` 還原（有些 client 會把
 非 ASCII 全部逃逸，不還原的話中文全變成 `?`）。
 
-全部加起來約 2,400 行。
+全部加起來約 3,000 行。
 
 ## 取捨與副作用
 
