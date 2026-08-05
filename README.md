@@ -82,9 +82,12 @@ check. So the preview isn't a plain-text dump:
     self-message loops
   - `flowchart` / `graph` — Sugiyama layering with cycle breaking and dummy nodes for
     long edges; parallel edges merge their labels, back edges become footnotes
-  - `erDiagram` — entities as attribute boxes plus an aligned relationship table
-    (`||--o{` becomes `1 ── 0..n`)
-  - `C4Context` / `C4Container` / `C4Component` — nested boundary boxes, `Rel()` listed
+  - `erDiagram` — entity boxes with their attributes, connected with real lines;
+    cardinality sits at each end of the line (`|1` … `▼0..n`)
+  - `C4Context` / `C4Container` / `C4Component` — elements connected with real lines,
+    each carrying its boundary as a `⟨…⟩` line. mermaid keeps the nesting and draws
+    relations over it; a character grid cannot let two lines cross in one cell, so this
+    trades the nesting for the connections
 
   Everything is CJK-width-correct. Anything it cannot parse (`gantt`, `pie`, …) falls
   back to a plain code block, so the worst case is what you see today
@@ -104,7 +107,7 @@ check. So the preview isn't a plain-text dump:
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
-All of it in **1,673 lines of awk** with no renderer installed — no `glow`, no `bat`,
+All of it in **1,691 lines of awk** with no renderer installed — no `glow`, no `bat`,
 no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
 and gawk, so it looks the same on your laptop and inside an Alpine container.
 
@@ -372,7 +375,7 @@ fed through a fifo.
 just sends `send-keys -X page-down`. Wrapping, East-Asian character widths, and the
 `[n/m]` scroll indicator are all tmux's job, so they're correct for free.
 
-**Markdown rendering is 1,673 lines of awk** (`md.awk` plus `width.awk` `seq.awk` `flow.awk` `er.awk` `c4.awk`) — headings, lists, inline
+**Markdown rendering is 1,691 lines of awk** (`md.awk` plus `width.awk` `graph.awk` `seq.awk` `flow.awk` `er.awk` `c4.awk`) — headings, lists, inline
 code, blockquotes, fenced blocks with keyword-level SQL/C# highlighting. Byte-for-byte
 identical output across BWK awk (macOS), busybox awk, and gawk.
 
