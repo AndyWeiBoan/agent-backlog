@@ -260,10 +260,19 @@ bind-key -n C-o run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_
 | `dispatch` | 把一則交給**獨立的 Claude Code 實例**，然後繼續做自己的事 |
 | `peek` | 抓那個實例的畫面追進度 |
 | `check` | 把待辦裡的 checklist 項目打勾 —— `- [ ]` → `- [x]` |
-| `append` | 把結論寫回待辦，不動到原本的內容 |
+| `append` | 把結論寫回待辦，不動到原本的內容 —— description 裡明講不要拿來做進度回報 |
 | `set_status` | 標記 blocked / done —— 標成 done 會自動沉到清單底部 |
 | `set_priority` | 把某件事浮到最上面（1–10）—— 跟人看到的是同一個排序 |
 | `delete` | 刪掉指名的一則 —— 綁得很緊，見下面 |
+
+**description 是唯一能約束 agent 的地方。** 這裡沒有權限系統，也沒有 review 步驟——
+agent 讀到什麼就照什麼做。所以寫入類的工具（`add` / `append` / `check` / `delete`）
+在 description 裡都明講「**什麼時候不要用**」，不只是「怎麼用」。
+
+最需要管的是 `append`：它是唯一會讓待辦無限變長的操作，而內容不能改寫。
+agent 拿它當進度回報用（「我讀了 A」「我試了 B」）的話，那則很快變成流水帳，
+使用者反而看不到重點。所以 `append` 的 description 要求先問三件事——
+已經寫過了嗎？能不能改用 `check` 打勾？這段會改變使用者的決定嗎？
 
 **刻意沒有「整份取代」，也沒有批次刪除。** 這個系統沒有版本歷史、沒有 undo ——
 一次糟糕的呼叫不該能洗掉你寫的東西。所以給 agent 的是**窄的**寫入：

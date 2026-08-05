@@ -280,10 +280,21 @@ note-taker:
 | `dispatch` | hand an item to a **separate Claude Code instance** and move on |
 | `peek` | capture that instance's screen to follow its progress |
 | `check` | tick a checklist item inside an item — `- [ ]` → `- [x]` |
-| `append` | write findings back into the item without touching what's there |
+| `append` | write findings back into the item without touching what's there — its description says explicitly not to use it for progress narration |
 | `set_status` | mark blocked / done — a `done` item sinks to the bottom of the list |
 | `set_priority` | float something to the top (1–10) — same ordering the human sees |
 | `delete` | remove one named item — heavily fenced, see below |
+
+**The description is the only place you can constrain an agent.** There is no
+permission system here and no review step — the agent does whatever it read. So every
+writing tool (`add` / `append` / `check` / `delete`) spells out **when not to use it**,
+not just how.
+
+`append` needs it most: it is the only operation that makes an item grow without
+bound, and the body cannot be rewritten. An agent using it for progress narration
+("I read A", "I tried B") turns the item into a running log, which buries the point.
+So its description makes the agent ask three things first — is this already written?
+could `check` express it instead? will this change what the human decides?
 
 There is deliberately **no "replace the whole body"** and **no batch delete**. This
 system has no version history and no undo — one bad call must not be able to wipe
