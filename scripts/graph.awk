@@ -77,7 +77,8 @@ function gr_dfs(v,   k, e, u) {
     GR_STK[v] = 0
 }
 
-function gr_render(   i, e, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, ln,
+function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, ln,
+                   sum, cnt, ah,
                    g, top, bot, rb, f, t, pv, ne0, b, tl, tr, bl, br, sd, out, key) {
     GR_SKIP = sprintf("%c", 1)
     GR_R  = sprintf("%c[0m", 27)
@@ -99,6 +100,7 @@ function gr_render(   i, e, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, 
     for (i in GR_CFM)  delete GR_CFM[i]
     for (i in GR_CTM)  delete GR_CTM[i]
     for (i in GR_MAXH) delete GR_MAXH[i]
+    for (i in GR_BC)   delete GR_BC[i]
 
     # 合併平行邊：標籤用 / 串起來
     for (e = 1; e <= GR_NE; e++) {
@@ -150,6 +152,28 @@ function gr_render(   i, e, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, 
         if (L > GR_MAXL) GR_MAXL = L
         H = gr_h_of(i); if (H > GR_MAXH[L]) GR_MAXH[L] = H
     }
+    # 層內排序：重心法（barycenter）一趟。
+    # 每個節點排到「它上一層的鄰居的平均位置」，這樣父子會盡量對齊，交叉變少。
+    # 只跑一趟不迭代 —— 迭代是 Sugiyama 的第四步，投資報酬率差（見檔頭）。
+    # 沒有這步的時候，PLAYER_INFO_MASK 不會落在 PLAYER 底下，
+    # 三條邊在同一個間隙裡纏成一團。
+    for (L = 2; L <= GR_MAXL; L++) {
+        for (k = 1; k <= GR_LC[L]; k++) {
+            i = GR_LN[L,k]; sum = 0; cnt = 0
+            for (e = 1; e <= GR_NEU; e++) {
+                if (GR_DEAD[e] || GR_BACK[e] || GR_ETU[e] != i) continue
+                if (GR_LAY[GR_EFU[e]] != L - 1) continue
+                for (j = 1; j <= GR_LC[L-1]; j++) if (GR_LN[L-1,j] == GR_EFU[e]) { sum += j; cnt++ }
+            }
+            GR_BC[i] = cnt ? sum / cnt : k
+        }
+        # 插入排序，穩定（同分維持原順序）
+        for (k = 2; k <= GR_LC[L]; k++) {
+            i = GR_LN[L,k]; j = k - 1
+            while (j >= 1 && GR_BC[GR_LN[L,j]] > GR_BC[i]) { GR_LN[L,j+1] = GR_LN[L,j]; j-- }
+            GR_LN[L,j+1] = i
+        }
+    }
     # x 座標：層內排開，每層再整體置中
     for (L = 1; L <= GR_MAXL; L++) {
         tw = -3
@@ -163,14 +187,24 @@ function gr_render(   i, e, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, 
             i = GR_LN[L,k]; GR_X[i]=x; GR_CX[i]=x+int(gr_w(i)/2); x += gr_w(i)+3
         }
     }
-    # 每個層間隙要幾條匯流排：會轉彎的邊各佔一條（共用會疊在一起）
+    # 每個層間隙有幾條邊 —— 直線邊也要算。
+    # ⚠️ 只算轉彎的邊會出事：直線邊的標籤若固定放在某一列，就會跟第一條轉彎邊的
+    # 標籤撞在一起（實測 ER 的「走哪個渠道」壓在「提出」旁邊）。
+    # 每條邊都拿一組（標籤列 + 線列），標籤就不可能互相蓋。
     for (e = 1; e <= GR_NEU; e++) {
         if (GR_DEAD[e] || GR_BACK[e] || GR_LAY[GR_ETU[e]] != GR_LAY[GR_EFU[e]] + 1) continue
-        if (GR_CX[GR_EFU[e]] != GR_CX[GR_ETU[e]]) GR_BUS[GR_LAY[GR_EFU[e]]]++
+        GR_BUS[GR_LAY[GR_EFU[e]]]++
     }
-    # 間隙的列數：第一列只放兩端的基數標記，接著每條轉彎的邊各一條匯流排，
-    # 最後一列放箭頭。基數跟標籤共用一列的話會互相蓋掉（實測 "┌ 提出1"）。
-    for (L = 1; L <= GR_MAXL; L++) { GR_GAPR[L] = GR_BUS[L] + 3; if (GR_GAPR[L] < 3) GR_GAPR[L] = 3 }
+    # 間隙的列數：
+    #   第一列        兩端的基數標記
+    #   接下來每條轉彎的邊各兩列：一列放它的標籤，一列放它的匯流排
+    #   最後一列      箭頭
+    # 標籤一定要有自己的列。之前讓它「太長就放線的右邊」，結果直接壓在別條邊的
+    # 線上（實測 ER 三條邊擠在一起時整個中段變成一團看不懂的東西）。
+    for (L = 1; L <= GR_MAXL; L++) {
+        GR_GAPR[L] = 2 * GR_BUS[L] + 2
+        if (GR_GAPR[L] < 3) GR_GAPR[L] = 3
+    }
     GR_BASE[1] = 1
     for (L = 2; L <= GR_MAXL; L++) GR_BASE[L] = GR_BASE[L-1] + GR_MAXH[L-1] + GR_GAPR[L-1]
 
@@ -217,27 +251,31 @@ function gr_render(   i, e, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, 
         # 標籤太長時兩條邊會互相擠掉。mermaid 也是放兩端。
         if (GR_CFM[key] != "") gr_put(top, sx+1, GR_CFM[key])
         if (GR_CTM[key] != "") gr_put(bot, tx+1, GR_CTM[key])
+        GR_USED[g]++
+        rb = top + 2 * GR_USED[g]      # 標籤在 rb-1，線在 rb
+        # 虛擬節點只是跨層路徑的中繼點，不該有箭頭 ——
+        # 畫上去會變成「▼ 後面接著一條線」，看起來像箭頭指到空白處。
+        ah = GR_V[t] ? ln : "▼"
         if (sx == tx) {
             for (r = top; r < bot; r++) gr_v(r, sx, ln)
-            GR_G[bot,sx] = "▼"
-            if (GR_EGM[key] != "") gr_put(top + 1, sx+2, GR_EGM[key])
+            GR_G[bot,sx] = ah
+            if (GR_EGM[key] != "")
+                gr_put(rb - 1, sx + 2, GR_EGM[key])
             continue
         }
-        rb = top + (++GR_USED[g])
         for (r = top; r < rb; r++) gr_v(r, sx, ln)
         lo = sx<tx ? sx : tx; hi = sx>tx ? sx : tx
         GR_G[rb,sx] = (tx>sx) ? "└" : "┘"
         for (x = lo+1; x <= hi-1; x++) gr_h(rb, x)
         GR_G[rb,tx] = (tx>sx) ? "┐" : "┌"
         for (r = rb+1; r < bot; r++) gr_v(r, tx, ln)
-        GR_G[bot,tx] = "▼"
-        # 標籤置中在跨距上；比跨距長就改放線的右邊 ——
-        # 硬置中會把兩端的轉角蓋掉（實測 "┌ 提出" 就是 ┘ 被吃了）。
+        GR_G[bot,tx] = ah
+        # 標籤放自己那一列（rb-1），置中在跨距上。
+        # 那一列除了別條邊的縱線之外是空的，所以不會蓋到橫線與轉角。
         if (GR_EGM[key] != "") {
-            if (dw(GR_EGM[key]) + 2 <= hi - lo - 1)
-                gr_put(rb, lo + int((hi-lo-dw(" " GR_EGM[key] " "))/2) + 1, " " GR_EGM[key] " ")
-            else
-                gr_put(rb, hi + 2, GR_EGM[key])
+            x = lo + int((hi - lo - dw(GR_EGM[key])) / 2)
+            if (x < 1) x = 1
+            gr_put(rb - 1, x, GR_EGM[key])
         }
     }
     out = ""
