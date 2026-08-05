@@ -16,7 +16,10 @@
 零依賴。沒有資料庫、沒有 JSON 檔、沒有 Node、沒有 Python、不需要 `fzf`、不需要 `jq`。
 只用 tmux 和你機器上本來就有的 POSIX 工具。
 
-![agent-backlog](assets/demo-zh.png)
+![agent-backlog](assets/demo-zh.svg)
+
+<sub>這不是截圖 —— SVG 是拿 `list.awk` 與 `md.awk` 的真實輸出轉出來的（`tools/make-assets.sh`），
+所以每個字都在終端機會擺的那一格。改了 renderer 之後跑一次就更新。</sub>
 
 ---
 
@@ -123,6 +126,9 @@ Claude Code 內建的 TodoWrite 做不到 —— 那是單一 session 內的步�
 
 就這樣。只用到 `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep` `sort`
 `date` `dirname` `cat` `rm` `mkfifo` `mktemp` —— 全是 POSIX，你的機器上都有。
+
+> `tools/` 底下有一支 Python 腳本，用來重新產生 README 的圖。那是**文件工具** ——
+> plugin 執行時完全不會用到它，Python 不是依賴。
 
 ## 安裝
 

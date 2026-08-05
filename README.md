@@ -15,7 +15,11 @@ highlighted code, scrollable, CJK-aware — written in awk, with nothing install
 Zero dependencies. No database, no JSON store, no Node, no Python, no `fzf`, no `jq`.
 Just tmux and POSIX tools you already have.
 
-![agent-backlog](assets/demo.png)
+![agent-backlog](assets/demo.svg)
+
+<sub>Not a screenshot — the SVG is generated from the real output of `list.awk` and
+`md.awk` (`tools/make-assets.sh`), so every glyph sits exactly where the terminal
+puts it. Regenerate it after changing a renderer.</sub>
 
 ---
 
@@ -134,6 +138,9 @@ where the work happens.
 
 That's it. Uses only `sh` `awk` `sed` `stty` `dd` `od` `cut` `tr` `wc` `grep` `sort`
 `date` `dirname` `cat` `rm` `mkfifo` `mktemp` — all POSIX, all already on your machine.
+
+> `tools/` holds a Python script that regenerates the README image. It is a
+> documentation tool — the plugin never runs it, and Python is not a dependency.
 
 ## Install
 
