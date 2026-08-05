@@ -1,9 +1,8 @@
-# 分層圖引擎：節點（可變高度）+ 邊 → 文字。flowchart / erDiagram / C4 共用。
+# 分層圖引擎：節點（可變高度）+ 邊 → 文字。目前只有 flowchart 用。
 #
-# 為什麼要抽出來：ER 與 C4 第一版只畫方塊、關係列成清單 ——
-# 但 mermaid 原始碼本來就是一份清單，那等於沒加價值。線才是重點，
-# 而畫線就是圖佈局，那個東西 flowchart 已經有了。差別只在
-# flowchart 的方塊固定三行高，ER 要塞欄位、C4 要塞型別與說明。
+# 跟 flow.awk 分開的理由是「解析」與「佈局」是兩件事：
+# flow.awk 只把 mermaid 語法變成節點與邊，這裡只管怎麼把它們排進字元格。
+# （原本是給 erDiagram / C4 共用的，那兩種後來拿掉了，但這條界線本身還是對的。）
 #
 # 佈局 = Sugiyama 的前三步：斷環 → 分層（最長路徑）→ 跨層邊插虛擬節點。
 # 刻意不做第四步（交叉最小化）：要迭代重排，而在字元格裡就算排好了繞線還是會撞，
@@ -18,7 +17,6 @@
 #   GR_F[e], GR_TO[e]    起點 / 終點節點編號
 #   GR_L[e]              邊的標籤（畫在線的中間）
 #   GR_D[e]              1 = 虛線
-#   GR_CF[e], GR_CT[e]   線兩端的小標記（ER 的基數用；空字串 = 不畫）
 # 依賴 width.awk。
 
 function gr_put(r, col, s,   i, n, ch) {
@@ -107,8 +105,6 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
     for (i in GR_DEAD) delete GR_DEAD[i]
     for (i in GR_V)    delete GR_V[i]
     for (i in GR_EGM)  delete GR_EGM[i]
-    for (i in GR_CFM)  delete GR_CFM[i]
-    for (i in GR_CTM)  delete GR_CTM[i]
     for (i in GR_MAXH) delete GR_MAXH[i]
     for (i in GR_BC)   delete GR_BC[i]
 
@@ -122,7 +118,6 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
         GR_SEEN[key] = 1; GR_NEU++
         GR_EFU[GR_NEU] = GR_F[e]; GR_ETU[GR_NEU] = GR_TO[e]
         GR_EGM[key] = GR_L[e]; GR_EDU[GR_NEU] = GR_D[e]
-        GR_CFM[key] = GR_CF[e]; GR_CTM[key] = GR_CT[e]
     }
     # 斷環。⚠️ 不能直接跑最長路徑 —— 有環時迭代會把起點一路往下推，整張圖上下顛倒。
     for (e = 1; e <= GR_NEU; e++) GR_ADJ[GR_EFU[e], ++GR_ADJN[GR_EFU[e]]] = e
@@ -148,12 +143,11 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
             GR_NN++; GR_V[GR_NN] = 1; GR_T[GR_NN] = ""; GR_BN[GR_NN] = 0; GR_LAY[GR_NN] = L
             GR_NEU++; GR_EFU[GR_NEU] = pv; GR_ETU[GR_NEU] = GR_NN
             GR_EGM[pv "," GR_NN] = (pv == f ? GR_EGM[f "," t] : "")
-            GR_CFM[pv "," GR_NN] = (pv == f ? GR_CFM[f "," t] : "")
             GR_EDU[GR_NEU] = GR_EDU[e]
             pv = GR_NN
         }
         GR_NEU++; GR_EFU[GR_NEU] = pv; GR_ETU[GR_NEU] = t
-        GR_EGM[pv "," t] = ""; GR_CTM[pv "," t] = GR_CTM[f "," t]
+        GR_EGM[pv "," t] = ""
         GR_EDU[GR_NEU] = GR_EDU[e]
         GR_DEAD[e] = 1
     }
@@ -286,8 +280,6 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
         bot = top + GR_GAPR[g] - 1
         ln = GR_EDU[e] ? "┊" : "│"
         ah = GR_V[t] ? ln : "▼"
-        if (GR_CFM[key] != "") gr_put(top, sx+1, GR_CFM[key])
-        if (GR_CTM[key] != "") gr_put(bot, tx+1, GR_CTM[key])
         if (sx == tx) {
             # 直線邊：標籤貼在來源正下方那一列（所有直線邊共用）
             for (r = top; r < bot; r++) gr_v(r, sx, ln)
@@ -364,10 +356,4 @@ function gr_node(key,   i) {
 }
 function gr_edge(f, t, lab, dot) {
     GR_NE++; GR_F[GR_NE] = f; GR_TO[GR_NE] = t; GR_L[GR_NE] = lab; GR_D[GR_NE] = dot
-    GR_CF[GR_NE] = ""; GR_CT[GR_NE] = ""
-}
-# 帶兩端標記的版本
-function gr_edge_c(f, t, lab, dot, cf, ct) {
-    gr_edge(f, t, lab, dot)
-    GR_CF[GR_NE] = cf; GR_CT[GR_NE] = ct
 }
