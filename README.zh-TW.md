@@ -72,6 +72,9 @@ flowchart LR
   會把字元格填滿，不像 ☐ ☑ 又小又細。agent 邊做可以邊用 `check` 工具打勾
 - **code block** 帶 SQL 與 C# 的關鍵字級高亮，框線畫到窗格邊緣。
   沒有 lexer 的語言（log、stack trace）原樣輸出 —— 那本來就不該上色
+- **時序圖** —— ```` ```mermaid ```` 裡放 `sequenceDiagram`（或 PlantUML 的 `@startuml`）
+  會畫成真的圖：生命線、箭頭、虛線回應、自我訊息的迴圈，中文寬度正確。
+  解析不出來的一律退回程式碼區塊，所以最壞情況就是你現在看到的樣子
 - **表格**對齊分欄（`│ ┼`），支援 `:---:` 與 `---:` 的對齊宣告。
   欄寬按**顯示寬度**計算 —— East Asian Width 表就寫在 awk 裡，所以中文表頭對得齊。
   比窗格寬的時候，最寬的欄會縮，而 cell 內容**在欄內折行**（補白照補，
@@ -85,7 +88,7 @@ flowchart LR
   把 checklist 一項項勾掉時，你不用碰鍵盤就看得到
 - **中文寬度正確。** 折行交給 tmux 的 copy-mode，雙寬字元不會跑位
 
-全部是 **458 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
+全部是 **470 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
 不用 `rich`。在 BWK awk（macOS）、busybox awk、gawk 三種實作下輸出**逐位元組相同**，
 所以在你的筆電和 Alpine 容器裡長得一模一樣。
 
@@ -328,7 +331,7 @@ agent 跟你用同樣的範圍規則 —— 它從繼承來的 `TMUX_PANE` 反�
 **捲動交給 tmux。** 預覽窗格停在 copy-mode，選單只負責送 `send-keys -X page-down`。
 折行、東亞字元寬度、`[n/m]` 捲動指示器全部是 tmux 的工作 —— 所以免費就正確。
 
-**markdown render 是 458 行 awk**（`md.awk`）—— 標題、清單、行內程式碼、引用、
+**markdown render 是 470 行 awk**（`md.awk`）—— 標題、清單、行內程式碼、引用、
 code fence 加 SQL/C# 關鍵字級高亮。在 BWK awk（macOS）、busybox awk、gawk 三種
 實作下輸出**逐位元組相同**。
 

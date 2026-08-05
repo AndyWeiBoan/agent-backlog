@@ -76,6 +76,10 @@ check. So the preview isn't a plain-text dump:
 - **Fenced code blocks** with keyword-level highlighting for SQL and C#, framed to
   the pane edge. Languages without a lexer (logs, stack traces) pass through
   untouched — which is what you want for them
+- **Sequence diagrams** — a ```` ```mermaid ```` fence holding a `sequenceDiagram` (or a
+  PlantUML `@startuml` block) renders as an actual diagram: lifelines, arrows, dashed
+  replies, self-message loops, CJK-correct column widths. Anything it cannot parse
+  falls back to a plain code block, so the worst case is what you see today
 - **Tables**, column-aligned with `│ ┼` separators, honouring `:---:` / `---:`
   alignment. Widths are computed from *display* width — an East Asian Width table
   lives in the awk, so CJK headers line up. When the table is wider than the pane,
@@ -92,7 +96,7 @@ check. So the preview isn't a plain-text dump:
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
-All of it in **458 lines of awk** with no renderer installed — no `glow`, no `bat`,
+All of it in **470 lines of awk** with no renderer installed — no `glow`, no `bat`,
 no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
 and gawk, so it looks the same on your laptop and inside an Alpine container.
 
@@ -360,7 +364,7 @@ fed through a fifo.
 just sends `send-keys -X page-down`. Wrapping, East-Asian character widths, and the
 `[n/m]` scroll indicator are all tmux's job, so they're correct for free.
 
-**Markdown rendering is 458 lines of awk** (`md.awk`) — headings, lists, inline
+**Markdown rendering is 470 lines of awk** (`md.awk`) — headings, lists, inline
 code, blockquotes, fenced blocks with keyword-level SQL/C# highlighting. Byte-for-byte
 identical output across BWK awk (macOS), busybox awk, and gawk.
 

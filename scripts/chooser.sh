@@ -265,7 +265,7 @@ render_item() {
     { printf '\033[2m%s\033[0m\n\n' "$1"
       # 吃掉 md.awk 輸出開頭的空行：# 與 ## 這兩條規則會自己先補一個 \n，
       # 加上我們這行 id 後面的空行就變成連空兩行。
-      ab_prompt "$1" | LC_ALL=C awk -v w="$PW" -f "$DIR/width.awk" -f "$DIR/md.awk" \
+      ab_prompt "$1" | LC_ALL=C awk -v w="$PW" -f "$DIR/width.awk" -f "$DIR/seq.awk" -f "$DIR/md.awk" \
         | awk 'NR == 1 && $0 == "" { next } { print }'
     } | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }'
 }

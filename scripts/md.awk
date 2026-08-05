@@ -70,6 +70,9 @@ nt > 0 && fence == 0 && $0 !~ /^[ \t]*\|/ { tflush() }
         fence = 1
         lang = substr($0, 4)
         gsub(/[ \t]+$/, "", lang)
+        # 圖表：整塊收起來，收完再決定畫成圖還是畫成程式碼。
+        # 不能邊讀邊畫，因為「認不認得」要看完整塊才知道。
+        if (lang ~ /^(mermaid|plantuml|puml|uml)$/) { dia = 1; dn = 0; next }
         # 上框：┌─ lang ──────…── 一路畫到窗格右緣。
         # 原本這裡是寫死的五個「─」，看起來像畫到一半沒收尾。
         head = (lang == "" ? "" : " " lang " ")
@@ -78,10 +81,22 @@ nt > 0 && fence == 0 && $0 !~ /^[ \t]*\|/ { tflush() }
                dash(w - 2 - dw(head)), R
     } else {
         fence = 0
+        if (dia) {
+            dia = 0
+            diaout = seq_render(DIA, dn)
+            if (diaout != "") { printf "%s", diaout; next }
+            # 認不出來（flowchart 之類）就退回 code block ——
+            # 最壞情況是看到原始碼，跟沒有這個功能時一模一樣。
+            printf "%s┌─%s%s%s\n", BAR, " " B lang R BAR " ", dash(w - 4 - dw(lang)), R
+            for (di = 1; di <= dn; di++) printf "%s│%s %s\n", BAR, R, DIA[di]
+            printf "%s└%s%s\n", BAR, dash(w - 1), R
+            next
+        }
         printf "%s└%s%s\n", BAR, dash(w - 1), R
     }
     next
 }
+fence == 1 && dia == 1 { DIA[++dn] = $0; next }
 fence == 1 {
     printf "%s│%s %s\n", BAR, R, highlight($0, lang)
     next
