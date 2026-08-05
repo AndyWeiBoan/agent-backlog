@@ -42,14 +42,14 @@ BEGIN {
         T_THIS  = "· 本 session（Tab 看全部）"
         T_ALL   = "· 全部 session（Tab 切回本 session）"
         T_EMPTY = "沒有符合的待辦"
-        T_HINT  = " ↑↓ 選擇  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-k/C-j 優先度  C-x 刪除  Tab 範圍  ESC 離開"
+        T_HINT  = " ↑↓ 選擇  打字篩選（標題或 @id）  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-k/C-j 優先度  C-x 刪除  Tab 範圍  ESC 離開"
         T_HINT2 = " ↑↓ 選擇 · C-e/C-y 捲預覽 · Enter 切過去 · ESC 離開"
     } else {
         T_ITEMS = "items"
         T_THIS  = "· this session (Tab: all)"
         T_ALL   = "· all sessions (Tab: this one)"
         T_EMPTY = "no matching items"
-        T_HINT  = " ↑↓ select   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-k/C-j priority   C-x delete   Tab scope   ESC quit"
+        T_HINT  = " ↑↓ select   type to filter (title or @id)   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-k/C-j priority   C-x delete   Tab scope   ESC quit"
         T_HINT2 = " ↑↓ select · C-e/C-y scroll · Enter switch · ESC quit"
     }
     ql = tolower(q)
@@ -60,7 +60,13 @@ BEGIN {
 
 {
     split($0, f, US)
-    if (ql != "" && index(tolower(f[3]), ql) == 0) next
+    # 標題比對，外加 window_id。
+    #
+    # agent 在對話裡是用 window_id 指某一則的（「@355 自己標它是最大的不確定性」），
+    # 而那串數字在清單上沒有出現過 —— 使用者對不起來。
+    # 讓 id 也能被搜到，打 355 或 @355 都會只剩那一則。
+    # f[1] 是 @355 這種格式，本來就沒有大小寫。
+    if (ql != "" && index(tolower(f[3]), ql) == 0 && index(f[1], ql) == 0) next
     n++
     print $0 > mf
     sts[n] = (f[2] == "" ? "-" : f[2])

@@ -85,6 +85,9 @@ check. So the preview isn't a plain-text dump:
   and treats every CJK character as a break opportunity, which is how Chinese line
   breaking already works. Rows are **zebra-striped**, which is also what keeps a
   wrapped row from blurring into the next one — adjacent rows can never share a shade
+- **The window_id in the header** — a dim `@355` on the first line. Agents refer to
+  items by that id in conversation ("@355 flags itself as the biggest unknown"), and
+  without it on screen you cannot tell which item they mean
 - **Scrollable** — one line (`C-e`/`C-y`), half page (`C-d`/`C-u`), full page
   (`C-f`/`C-b`), with tmux's own `[n/m]` position indicator
 - **Live** — the list and the preview refresh themselves every few seconds, so you
@@ -167,7 +170,7 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 
 | Key | Action |
 |---|---|
-| *type* | filter (substring; CJK works) |
+| *type* | filter (substring; CJK works). Matches the window_id too — when an agent says "@355", type `355` |
 | `↑` `↓` | move selection (`C-p` / `C-n` too) |
 | `C-e` `C-y` | scroll preview one line |
 | `C-d` `C-u` | scroll preview half page |

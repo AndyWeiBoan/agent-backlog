@@ -243,6 +243,30 @@ draw_list() {
 
 selected_id() { sed -n "${CUR}p" "$MATCH" 2>/dev/null | cut -f1; }
 
+# 把一則 render 成要送進預覽窗格的樣子。
+#
+# ⚠️ 只能有這一支。draw_preview 產生快取、poll 產生 .new 拿去 cmp ——
+# 兩邊只要有一個位元組不同，poll 就會每 3 秒都認為內容變了而重畫，
+# 畫面會固定閃爍。之前那兩段是各寫一份重複的管線。
+#
+# 第一行印 window_id：agent 在對話裡講「@355」的時候，你在這裡對得起來。
+# 放在預覽而不是清單，是因為左窗格只有 46-58 欄，標題已經在截斷了 ——
+# 每一列再多一欄 id 會把標題擠掉。預覽有 127 欄，一行 id 不痛不癢。
+#
+# 每行結尾補 \033[K（清到行尾），重畫時就不需要清整個畫面。
+# \033[2J 是肉眼可見的一閃，換頁面時特別明顯。
+#
+# LC_ALL=C 是必要的，不是保險：md.awk 自己解 UTF-8 算顯示寬度（表格對齊要用），
+# 前提是 length() 回 byte 數。gawk 在 UTF-8 locale 下會回字元數，算出來就錯了。
+render_item() {
+    { printf '\033[2m%s\033[0m\n\n' "$1"
+      # 吃掉 md.awk 輸出開頭的空行：# 與 ## 這兩條規則會自己先補一個 \n，
+      # 加上我們這行 id 後面的空行就變成連空兩行。
+      ab_prompt "$1" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
+        | awk 'NR == 1 && $0 == "" { next } { print }'
+    } | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }'
+}
+
 # 清空預覽窗格。清單變空時要叫，不然畫面停在上一則，看起來像還選著它。
 clear_preview() {
     tmux send-keys -t "$RPANE" -X cancel 2>/dev/null
@@ -265,12 +289,7 @@ draw_preview() {
     LAST_ID=$id
 
     f="$CACHE/${id#@}"
-    # 每行結尾補 \033[K（清到行尾），這樣重畫時就不需要清整個畫面。
-    # \033[2J 是肉眼可見的一閃，換頁面時特別明顯。
-    # LC_ALL=C 是必要的，不是保險：md.awk 自己解 UTF-8 算顯示寬度（表格對齊要用），
-    # 前提是 length() 回 byte 數。gawk 在 UTF-8 locale 下會回字元數，算出來就錯了。
-    [ -f "$f" ] || ab_prompt "$id" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
-        | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$f"
+    [ -f "$f" ] || render_item "$id" > "$f"
 
     # 先清 history 再寫，寫的時候用 \033[H 覆蓋而不是 \033[2J 清空 ——
     # 清整個畫面是肉眼看得到的一閃，換選項時會一直閃。
@@ -402,8 +421,7 @@ poll() {
     # 選中那則的內容有沒有變（agent 打勾／append 都算）
     if [ -n "$LAST_ID" ]; then
         _f="$CACHE/${LAST_ID#@}"
-        ab_prompt "$LAST_ID" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
-            | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }' > "$_f.new"
+        render_item "$LAST_ID" > "$_f.new"
         if ! cmp -s "$_f" "$_f.new"; then
             mv "$_f.new" "$_f"
             LAST_ID=""      # 強制重畫預覽
