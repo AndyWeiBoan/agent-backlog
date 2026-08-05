@@ -221,6 +221,19 @@ Only indexes already occupied by backlog items are swapped, so **no non-backlog
 window ever moves** (your shell, a running claude, the chooser itself), and gaps in
 the numbering are preserved.
 
+### Colour
+
+The two columns sit side by side, so each gets its own hue family and they never
+compete:
+
+- **Priority is blue**, with brightness for magnitude: 7–10 bold bright cyan, 2–6 soft
+  blue, 1 not printed at all
+- **Status is semantic**, roughly "how much does this need you":
+  `blocked` bold red › `running` orange › `pending` light grey › `done` dim green (which
+  dims the title too)
+
+Status is an arbitrary string; anything custom (say `review`) falls back to light grey.
+
 ## Configuration
 
 | Option | Default | Meaning |
@@ -336,7 +349,7 @@ matter, so `json_get.awk` is a small tokenizer that flattens one JSON line into
 `path<TAB>value`, including `\uXXXX` decoding (some clients escape all non-ASCII;
 without decoding, every CJK character becomes `?`).
 
-Roughly 2,200 lines total.
+Roughly 2,400 lines total.
 
 ## Trade-offs and side effects
 

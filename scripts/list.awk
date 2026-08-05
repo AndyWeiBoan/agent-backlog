@@ -18,10 +18,22 @@ BEGIN {
     R   = E "0m"
     SEL = E "7m"                # 反白：選中那行
     DIM = E "2m"
+    # 狀態的顏色。亮度大致對應「這件事有多需要你」——
+    # 卡住的最刺眼，做完的最安靜，待做的維持可讀但不搶戲。
+    #
+    # 狀態本身是任意字串（set_status 不限制），所以一定要有 fallback，
+    # 不能寫成 if/else 兩條路。
+    ST_PEND  = E "38;5;250m"      # pending：淺灰，最多的那一種，不該吵
+    ST_RUN   = E "38;5;214m"      # running：橘，正在發生的事
+    ST_BLOCK = E "1;38;5;196m"    # blocked：粗體亮紅，要你去處理
+    ST_DONE  = E "2;38;5;108m"    # done：暗綠，已經沉到底部了，安靜
+    ST_OTHER = E "38;5;250m"      # 自訂狀態
     OK  = E "38;5;108m"
-    RUN = E "38;5;214m"         # running 用暖色，一眼分得出來
+    # 優先度與狀態是兩個不同的軸，而且欄位貼在一起 —— 各自用一個色系才分得開。
+    # 優先度走藍：同一個色相，靠亮度表示高低。
+    # 紅色留給 blocked（見下面）—— 原本優先度 7+ 也用粗紅，跟它擠在一起看不出差別。
     PRI = E "38;5;110m"         # 優先度 2-6：淡藍，存在但不搶眼
-    PRIH= E "1;38;5;203m"       # 優先度 7-10：粗體紅，要一眼看到
+    PRIH= E "1;38;5;45m"        # 優先度 7-10：粗體亮青，一眼看到但不跟 blocked 搶
     EL  = E "K"                 # 清到行尾
     CHARAWARE = (length("錢") == 1)   # 這台的 awk 是逐字元還是逐位元組
     # 介面文字。預設英文；lang=zh 切繁中。
@@ -80,9 +92,13 @@ END {
             if (i == cur)
                 out(SEL pad(sprintf(" %s %-8s %s", p, sts[i], title), w - 1) R)
             else
-                out(sprintf(" %s%s%s %s%-8s%s %s",
+                # done 的標題也一起變暗 —— 它已經沉到底部了，
+                # 只有狀態欄變色的話，那幾行的標題還是跟未完成的一樣亮。
+                out(sprintf(" %s%s%s %s%-8s%s %s%s%s",
                             (prs[i] >= 7 ? PRIH : PRI), p, R,
-                            (sts[i] == "running" ? RUN : OK), sts[i], R, title))
+                            stcolor(sts[i]), sts[i], R,
+                            (sts[i] == "done" ? DIM : ""), title,
+                            (sts[i] == "done" ? R : "")))
         }
     }
     printf "%sJ", E
@@ -97,6 +113,14 @@ END {
 }
 
 function out(s) { printf "%s%s\r\n", s, EL }
+
+function stcolor(s) {
+    if (s == "pending") return ST_PEND
+    if (s == "running") return ST_RUN
+    if (s == "blocked") return ST_BLOCK
+    if (s == "done")    return ST_DONE
+    return ST_OTHER
+}
 
 # 依顯示寬度截斷。
 # 逐位元組的 awk 上用 length() 當上界 —— 中文會被高估（一個字算 3 而不是 2），

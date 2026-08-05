@@ -208,6 +208,16 @@ sh scripts/restore.sh <檔名> [session]     # 同名的會跳過，不覆蓋
 只在待辦佔住的那些 window index 之間互換，**非待辦的 window 一個都不會動**
 （你的 shell、正在跑的 claude、選單自己），index 的空缺也維持原樣。
 
+### 顏色
+
+兩個欄位貼在一起，所以各走一個色系，不會互相干擾：
+
+- **優先度走藍**，靠亮度表示高低：7–10 粗體亮青、2–6 淡藍、1 不印
+- **狀態走語意色**，亮度大致對應「這件事有多需要你」：
+  `blocked` 粗體亮紅 › `running` 橘 › `pending` 淺灰 › `done` 暗綠（標題也一起變暗）
+
+狀態是任意字串，自訂的（例如 `review`）走預設的淺灰。
+
 ## 設定
 
 | option | 預設 | 說明 |
@@ -310,7 +320,7 @@ code fence 加 SQL/C# 關鍵字級高亮。在 BWK awk（macOS）、busybox awk�
 tokenizer，把一行 JSON 攤平成 `路徑<TAB>值`，包含 `\uXXXX` 還原（有些 client 會把
 非 ASCII 全部逃逸，不還原的話中文全變成 `?`）。
 
-全部加起來約 2,200 行。
+全部加起來約 2,400 行。
 
 ## 取捨與副作用
 
