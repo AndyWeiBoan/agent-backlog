@@ -66,6 +66,10 @@ Items are notes you actually wrote — symptoms, log excerpts, a slow query, wha
 check. So the preview isn't a plain-text dump:
 
 - **Headings, lists, blockquotes, inline code, horizontal rules**
+- **Bold** and **strikethrough** (`~~like this~~`), in any nesting or overlap — one
+  left-to-right pass with two toggles, so `~~**x**~~` and `**~~x~~**` both work.
+  Strikethrough is emitted as dim + SGR 9, so a terminal that ignores SGR 9 still
+  shows the text dimmed instead of showing nothing at all
 - **Checklists** — `- [ ]` and `- [x]` render as ⬜ / ✅ (emoji-presentation glyphs,
   which fill the cell — unlike the thin ☐ ☑), and an agent can tick them off with the
   `check` tool as it works through the item
@@ -88,7 +92,7 @@ check. So the preview isn't a plain-text dump:
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
-All of it in **520 lines of awk** with no renderer installed — no `glow`, no `bat`,
+All of it in **537 lines of awk** with no renderer installed — no `glow`, no `bat`,
 no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
 and gawk, so it looks the same on your laptop and inside an Alpine container.
 
@@ -339,7 +343,7 @@ fed through a fifo.
 just sends `send-keys -X page-down`. Wrapping, East-Asian character widths, and the
 `[n/m]` scroll indicator are all tmux's job, so they're correct for free.
 
-**Markdown rendering is 520 lines of awk** (`md.awk`) — headings, lists, inline
+**Markdown rendering is 537 lines of awk** (`md.awk`) — headings, lists, inline
 code, blockquotes, fenced blocks with keyword-level SQL/C# highlighting. Byte-for-byte
 identical output across BWK awk (macOS), busybox awk, and gawk.
 

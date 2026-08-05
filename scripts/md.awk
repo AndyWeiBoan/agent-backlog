@@ -23,6 +23,10 @@ BEGIN {
     E   = sprintf("%c[", 27)
     R   = E "0m"          # reset
     B   = E "1m"          # bold
+    # ~~刪除線~~。dim 是刻意加的 fallback：SGR 9 有些終端機不畫
+    # （macOS 內建的 Terminal.app 就是），那時候至少還會變暗，
+    # 而不是跟一般文字完全一樣。tmux 3.4 與 3.6a 都會原樣傳出去（實測過）。
+    STRIKE = E "2;9m"
     DIM = E "2m"
     # 256 色
     H1  = E "1;38;5;39m"  # 標題一：亮藍
@@ -271,6 +275,7 @@ function iswide(c) {
 function tplain(s) {
     gsub(/`/, "", s)
     gsub(/\*\*/, "", s)
+    gsub(/~~/, "", s)
     return s
 }
 # 表格版的 inline()。多一個 base 參數：每次結束一段樣式後要把 base 補回去，
@@ -279,14 +284,7 @@ function tinline(s, base,   out, i, n, parts) {
     out = ""; n = split(s, parts, "`")
     for (i = 1; i <= n; i++) {
         if (i % 2 == 0) out = out COD_T parts[i] R base
-        else            out = out tbolds(parts[i], base)
-    }
-    return out
-}
-function tbolds(s, base,   out, i, n, parts) {
-    out = ""; n = split(s, parts, "\\*\\*")
-    for (i = 1; i <= n; i++) {
-        out = out (i % 2 == 0 ? B parts[i] R base : parts[i])
+        else            out = out emph(parts[i], base)
     }
     return out
 }
@@ -450,16 +448,35 @@ function inline(s,   out, i, n, parts) {
     # `code`：奇數段落是 code
     out = ""; n = split(s, parts, "`")
     for (i = 1; i <= n; i++) {
-        out = out (i % 2 == 0 ? COD " " parts[i] " " R : bolds(parts[i]))
+        out = out (i % 2 == 0 ? COD " " parts[i] " " R : emph(parts[i], ""))
     }
     return out
 }
-function bolds(s,   out, i, n, parts) {
-    out = ""; n = split(s, parts, "\\*\\*")
-    for (i = 1; i <= n; i++) {
-        out = out (i % 2 == 0 ? B parts[i] R : parts[i])
+
+# **粗體** 與 ~~刪除線~~。
+#
+# 不用 split() 分別處理，因為那樣一定會有一種巢狀壞掉：先切 ~~ 的話
+# **~~x~~** 的星號會被拆到不同段；先切 ** 的話 ~~**x**~~ 壞掉。
+# 改成從左到右掃一遍、維持兩個開關，任意巢狀與交錯都對。
+#
+# base：每次屬性變動都要 reset 再重新套上去，而 reset 會把呼叫端的底色
+# （表格的斑馬紋）一起關掉 —— 所以 base 要跟著補回來。表格以外傳空字串。
+#
+# 逐位元組掃是安全的：** 與 ~~ 都是 ASCII，而 UTF-8 的續接位元組一定 ≥ 0x80，
+# 不可能誤判成標記。
+function emph(s, base,   out, i, n, b, k) {
+    out = ""; b = 0; k = 0; i = 1; n = length(s)
+    while (i <= n) {
+        if (substr(s, i, 2) == "**") { b = !b; out = out emphsgr(b, k, base); i += 2; continue }
+        if (substr(s, i, 2) == "~~") { k = !k; out = out emphsgr(b, k, base); i += 2; continue }
+        out = out substr(s, i, 1); i++
     }
+    # 標記沒有收尾（單獨一個 ** 或 ~~）就在行末關掉，不要漏到下一行
+    if (b || k) out = out R base
     return out
+}
+function emphsgr(b, k, base) {
+    return R base (b ? B : "") (k ? STRIKE : "")
 }
 
 # ── 程式碼語法高亮 ───────────────────────────────────────────
