@@ -35,7 +35,6 @@ BEGIN {
     PRI = E "38;5;110m"         # 優先度 2-6：淡藍，存在但不搶眼
     PRIH= E "1;38;5;45m"        # 優先度 7-10：粗體亮青，一眼看到但不跟 blocked 搶
     EL  = E "K"                 # 清到行尾
-    CHARAWARE = (length("錢") == 1)   # 這台的 awk 是逐字元還是逐位元組
     # 介面文字。預設英文；lang=zh 切繁中。
     if (lang == "zh") {
         T_ITEMS = "則"
@@ -66,9 +65,14 @@ BEGIN {
     # 而那串數字在清單上沒有出現過 —— 使用者對不起來。
     # 讓 id 也能被搜到，打 355 或 @355 都會只剩那一則。
     # f[1] 是 @355 這種格式，本來就沒有大小寫。
+    # id 欄的寬度取最長的那個，而且是「全部待辦」不是「命中的」——
+    # 只看命中的話，欄寬會隨著你打字一直變，整個清單左右跳。
+    if (length(f[1]) > idw) idw = length(f[1])
+
     if (ql != "" && index(tolower(f[3]), ql) == 0 && index(f[1], ql) == 0) next
     n++
     print $0 > mf
+    ids[n] = f[1]
     sts[n] = (f[2] == "" ? "-" : f[2])
     tis[n] = f[3]
     prs[n] = (f[4] ~ /^[0-9]+$/) ? f[4] + 0 : 1
@@ -94,13 +98,18 @@ END {
             # 優先度 1（預設）不印數字。大部分待辦都是 1，每行都印一個「1」
             # 只是噪音；留白本身就表示「沒有特別指定」。
             p = (prs[i] > 1) ? sprintf("%2d", prs[i]) : "  "
-            title = cutw(tis[i], w - 15)
+            # id 靠左補到固定寬。用 sprintf 組格式字串而不是 printf 的 "%*s"，
+            # 因為 * 這個寬度旗標不是每個 awk 都吃。
+            wid = sprintf("%-" idw "s", ids[i])
+            title = cutw(tis[i], w - idw - 16)
             if (i == cur)
-                out(SEL pad(sprintf(" %s %-8s %s", p, sts[i], title), w - 1) R)
+                out(SEL pad(sprintf(" %s %s %-8s %s", wid, p, sts[i], title), w - 1) R)
             else
+                # id 用暗色：它是拿來跟 agent 對照用的參照，不該跟標題搶注意力。
                 # done 的標題也一起變暗 —— 它已經沉到底部了，
                 # 只有狀態欄變色的話，那幾行的標題還是跟未完成的一樣亮。
-                out(sprintf(" %s%s%s %s%-8s%s %s%s%s",
+                out(sprintf(" %s%s%s %s%s%s %s%-8s%s %s%s%s",
+                            DIM, wid, R,
                             (prs[i] >= 7 ? PRIH : PRI), p, R,
                             stcolor(sts[i]), sts[i], R,
                             (sts[i] == "done" ? DIM : ""), title,
@@ -128,23 +137,25 @@ function stcolor(s) {
     return ST_OTHER
 }
 
-# 依顯示寬度截斷。
-# 逐位元組的 awk 上用 length() 當上界 —— 中文會被高估（一個字算 3 而不是 2），
-# 所以只會提早截斷，不會撐爆版面。精算寬度是之後的事。
-function cutw(s, max,   i, o, wsum, c) {
+# 依顯示寬度截斷，切在字元邊界上。
+#
+# 舊版是 substr(s, 1, max - 1) —— 按 byte 切，會切在多位元組字元中間，
+# 畫面上就出現一個壞掉的方塊。標題欄變短之後（左邊多了 id 欄）就很常見。
+# dw / decode / iswide 來自 width.awk，跟 md.awk 用同一份定義。
+function cutw(s, max,   acc, i, wid, cw) {
     if (max < 4) max = 4
-    if (!CHARAWARE) {
-        if (length(s) <= max) return s
-        return substr(s, 1, max - 1) "…"
+    if (dw(s) <= max) return s
+    max--                       # 讓一格給 …
+    acc = ""; wid = 0; i = 1
+    while (i <= length(s)) {
+        decode(s, i)
+        cw = iswide(CP) ? 2 : 1
+        if (wid + cw > max) break
+        acc = acc substr(s, i, CLEN)
+        wid += cw
+        i += CLEN
     }
-    wsum = 0; o = ""
-    for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        wsum += (c ~ /^[ -~]$/) ? 1 : 2
-        if (wsum > max) return o "…"
-        o = o c
-    }
-    return o
+    return acc "…"
 }
 
 function pad(s, k) {

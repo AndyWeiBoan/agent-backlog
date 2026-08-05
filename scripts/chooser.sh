@@ -237,8 +237,11 @@ draw_list() {
     fi
 
     : > "$MATCH"
-    awk -v q="$QUERY" -v cur="$CUR" -v w="$W" -v h="$H" -v total="$TOTAL" \
-        -v scope="$SCOPE" -v lang="$AB_LANG" -v mf="$MATCH" -f "$DIR/list.awk" "$ITEMS"
+    # LC_ALL=C：list.awk 現在也用 width.awk 的 dw() 算標題截斷，
+    # 而那份寬度計算的前提是 length() 回 byte 數。跟 md.awk 同一個理由。
+    LC_ALL=C awk -v q="$QUERY" -v cur="$CUR" -v w="$W" -v h="$H" -v total="$TOTAL" \
+        -v scope="$SCOPE" -v lang="$AB_LANG" -v mf="$MATCH" \
+        -f "$DIR/width.awk" -f "$DIR/list.awk" "$ITEMS"
 }
 
 selected_id() { sed -n "${CUR}p" "$MATCH" 2>/dev/null | cut -f1; }
@@ -262,7 +265,7 @@ render_item() {
     { printf '\033[2m%s\033[0m\n\n' "$1"
       # 吃掉 md.awk 輸出開頭的空行：# 與 ## 這兩條規則會自己先補一個 \n，
       # 加上我們這行 id 後面的空行就變成連空兩行。
-      ab_prompt "$1" | LC_ALL=C awk -v w="$PW" -f "$DIR/md.awk" \
+      ab_prompt "$1" | LC_ALL=C awk -v w="$PW" -f "$DIR/width.awk" -f "$DIR/md.awk" \
         | awk 'NR == 1 && $0 == "" { next } { print }'
     } | awk 'BEGIN { EL = sprintf("%c[K", 27) } { print $0 EL }'
 }

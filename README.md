@@ -85,9 +85,6 @@ check. So the preview isn't a plain-text dump:
   and treats every CJK character as a break opportunity, which is how Chinese line
   breaking already works. Rows are **zebra-striped**, which is also what keeps a
   wrapped row from blurring into the next one — adjacent rows can never share a shade
-- **The window_id in the header** — a dim `@355` on the first line. Agents refer to
-  items by that id in conversation ("@355 flags itself as the biggest unknown"), and
-  without it on screen you cannot tell which item they mean
 - **Scrollable** — one line (`C-e`/`C-y`), half page (`C-d`/`C-u`), full page
   (`C-f`/`C-b`), with tmux's own `[n/m]` position indicator
 - **Live** — the list and the preview refresh themselves every few seconds, so you
@@ -95,7 +92,7 @@ check. So the preview isn't a plain-text dump:
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
-All of it in **537 lines of awk** with no renderer installed — no `glow`, no `bat`,
+All of it in **458 lines of awk** with no renderer installed — no `glow`, no `bat`,
 no `rich`. Output is byte-for-byte identical across BWK awk (macOS), busybox awk,
 and gawk, so it looks the same on your laptop and inside an Alpine container.
 
@@ -184,6 +181,12 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 | `C-r` | reload the list |
 | `ESC` `C-c` | leave, returning to where you came from |
 | `prefix` + `⌥←` `⌥→` | resize the divider (tmux's own binding; width is remembered) |
+
+Every row starts with the item's **`window_id`** (`@355`), dimmed, and the preview
+repeats it on its first line. Agents refer to items by that id in conversation
+("@355 flags itself as the biggest unknown") — without it on screen you cannot tell
+which item they mean. The id column is only as wide as the longest id, and its width
+is computed over every item rather than the matches, so it does not jitter as you type.
 
 Add an item from the shell:
 
@@ -357,7 +360,7 @@ fed through a fifo.
 just sends `send-keys -X page-down`. Wrapping, East-Asian character widths, and the
 `[n/m]` scroll indicator are all tmux's job, so they're correct for free.
 
-**Markdown rendering is 537 lines of awk** (`md.awk`) — headings, lists, inline
+**Markdown rendering is 458 lines of awk** (`md.awk`) — headings, lists, inline
 code, blockquotes, fenced blocks with keyword-level SQL/C# highlighting. Byte-for-byte
 identical output across BWK awk (macOS), busybox awk, and gawk.
 
