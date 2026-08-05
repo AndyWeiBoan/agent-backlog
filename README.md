@@ -516,9 +516,13 @@ Your items are windows; keeping or closing them is up to you.
 
 ## Documentation
 
-Design rationale, research results, and a long list of things that bit us during
-development live in [docs/](docs/). Implementation details:
-[docs/07-implementation.md](docs/07-implementation.md).
+Read [docs/architecture.md](docs/architecture.md) before touching the code — a file
+map, **twelve rules you must not break** (each one maps to something that actually
+broke), and what to verify after a change.
+
+It describes only the current state. The earlier research and planning notes (the old
+Node implementation, the fzf evaluation, the roadmap) no longer hold, so they are gone
+— they are still in the git history if you want them.
 
 ## License
 

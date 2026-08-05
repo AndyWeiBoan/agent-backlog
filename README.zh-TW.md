@@ -470,8 +470,11 @@ tmux set-option -u key-table
 
 ## 文件
 
-設計脈絡、研究結論，以及開發過程中踩到的一長串坑，都在 [docs/](docs/)。
-實作細節看 [docs/07-implementation.md](docs/07-implementation.md)。
+改程式碼之前先看 [docs/architecture.md](docs/architecture.md) —— 檔案地圖、
+**十二條不可打破的規則**（每一條都對應一個實際壞過的東西），以及改完之後要驗什麼。
+
+那份只描述現在的狀態。之前的研究與規劃筆記（舊的 Node 版實作、fzf 方案評估、
+roadmap）已經不成立，所以刪掉了 —— 想看的話在 git 歷史裡。
 
 ## 授權
 

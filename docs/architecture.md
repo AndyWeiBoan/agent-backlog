@@ -1,0 +1,118 @@
+# 架構與不可打破的規則
+
+README 講「這是什麼、怎麼用、有什麼副作用」。這份講**改程式碼之前要知道的事**。
+
+只描述現在的狀態。之前有一批研究與規劃筆記（舊的 Node 版實作、fzf 方案的評估、
+roadmap），內容已經不成立，所以刪掉了 —— 想看的話在 git 歷史裡。
+
+## 檔案地圖
+
+```
+agent-backlog.tmux        TPM 進入點：檢查平台與 tmux 版本、綁鍵
+scripts/
+  lib.sh                  option key、ab_items（唯一的清單來源與排序）、狀態/優先度寫入
+  open.sh                 開選單（每個 session 一份）
+  chooser.sh              左窗格主迴圈：讀鍵 → 篩選 → 畫清單 → 畫預覽
+  preview_pane.sh         右窗格：從 fifo 讀什麼就印什麼
+  dispatch.sh             在待辦的 window 裡啟動 agent 並把內容送進去
+  add.sh                  從 shell 新增一則
+  backup.sh restore.sh    匯出／還原（唯一的救援手段）
+  migrate.sh              舊版 action-items 的資料搬過來
+  mcp-server.sh           MCP server（JSON-RPC over stdio），10 個工具
+  mcp/json_get.awk        JSON → 路徑<TAB>值（含 \uXXXX 還原）
+  mcp/json_str.awk        字串跳脫
+  mcp/check.awk           只翻某一個 checkbox 的勾，其他一個字都不動
+  width.awk               顯示寬度（East Asian Width）。md.awk 與 list.awk 共用
+  sort.awk                清單排序：done 沉底 → 優先度降冪 → 標題
+  reorder.awk             算出要換哪幾對 window 才能讓 tmux 的順序等於清單順序
+  list.awk                畫整個左窗格
+  md.awk                  markdown → ANSI
+  graph.awk               分層圖引擎（節點 + 邊 → 字元格）
+  seq.awk                 時序圖解析
+  flow.awk                流程圖解析（佈局交給 graph.awk）
+tools/                    只用來重新產生 README 的圖。plugin 用不到，需要 python3
+```
+
+`md.awk` 這一組的呼叫方式是多個 `-f`，而且**必須** `LC_ALL=C`：
+
+```sh
+LC_ALL=C awk -f width.awk -f graph.awk -f seq.awk -f flow.awk -f md.awk
+LC_ALL=C awk -f width.awk -f list.awk
+```
+
+## 不可打破的規則
+
+這些不是風格偏好，每一條都對應一個實際壞過的東西。
+
+### 1. `LC_ALL=C` 是必要條件，不是保險
+
+`length()` 回 byte 數還是字元數取決於 awk 實作與 locale ——
+macOS 的 BWK awk 在 UTF-8 locale 下 `length("專案") == 6`，gawk 是 2。
+`width.awk` 自己解 UTF-8，前提是 byte 模式。改了呼叫方式記得連 `LC_ALL` 一起帶。
+
+### 2. 數字全部用十進位
+
+BWK awk 不認 `0x80` 這種十六進位常值 —— 它解析成 `0` 接一個叫 `x80` 的空變數，
+比較永遠成立，UTF-8 解碼會**靜默**歪掉。
+
+### 3. 不要把 ANSI 逃逸碼塞進字元格陣列
+
+`gr_put` / `sq_put` 是一格一個字元，escape 的每個位元組都會佔掉一格。
+上色一律在出場時按「這格是不是線條」判斷。同理，量方塊寬度不能對已經上色的字串
+用 `dw()`。
+
+### 4. 圖表認不出來就回空字串
+
+`seq_render` / `flow_render` 不認得就回 `""`，`md.awk` 照 code block 畫。
+這條讓「加一種圖」和「拿掉一種圖」都不可能弄壞既有的 render ——
+最壞情況是看到原始碼。
+
+### 5. 預覽的 render 只能有一個定義
+
+`chooser.sh` 的 `render_item()`。`draw_preview` 產生快取、`poll` 產生 `.new`
+拿去 `cmp` —— 兩邊只要有一個位元組不同，poll 就會每 3 秒都認為內容變了而重畫，
+畫面會固定閃爍。
+
+### 6. 排序只有一個定義
+
+`lib.sh` 的 `ab_items()`。選單、MCP 的 `list`、`backup` 全部走那一支，
+所以人和 agent 看到的順序不可能不一樣。
+
+### 7. 訊號的 trap 一定要自己 `exit`
+
+trap 執行完會繼續往下跑。只寫 `trap cleanup HUP` 等於把「終端機關掉就結束」
+拆掉，主迴圈會對著死掉的 tty 空轉（實測：20 個孤兒行程、11% CPU）。
+
+### 8. `key-table` 是 session 層級的，一定要還原
+
+`set -w` / `set -p` 都會被 tmux 悄悄轉成 session。沒還原的話整個 session
+從此跳過 root 表，使用者的 `C-p` / `C-t` / `C-d` 全部失效，而且看不出原因。
+
+### 9. 不要用空字串當 tmux 的 target
+
+`kill-window -t ""` 對 tmux 來說等於「當前的」—— 會殺掉使用者正在看的 window。
+
+### 10. 別把 session id 放進要 `eval` 的字串
+
+session id 長得像 `$8`。`eval` 會把它當第 8 個位置參數展開
+（實測 `'$16:2'` 變成 `'6:2'`）。用位置參數累積再 `tmux "$@"`。
+
+### 11. `swap-window` 會改動「當前 window」
+
+tmux 的當前 window 是記 index 的。`-d` 不解決這件事（它只是換一種挑法）——
+要先記下原本的 `window_id`，換完再 `select-window` 選回去。
+
+### 12. 給 agent 的寫入一律是窄的
+
+沒有「整份取代」。`append` 只能追加，`check` 只能翻一個 `[ ]`↔`[x]`，
+`delete` 一次一則且必須指名、刪前 stash 進 tmux buffer。
+這個系統沒有版本歷史、沒有 undo。
+
+## 改完之後要驗什麼
+
+1. **三種 awk 輸出逐位元組相同** —— BWK 20200816（macOS）、gawk、busybox。
+   Alpine 容器裡兩種都有。
+2. **不相關的內容輸出不能變。** 動 renderer 的時候，拿一批不含該語法的內容
+   比對前後輸出，必須逐位元組相同。
+3. **多種寬度。** 至少 30 / 60 / 100 —— 折行與截斷的 bug 只在窄的時候出現。
+4. **中文。** 每一個寬度計算的 bug 都是中文才看得出來。
