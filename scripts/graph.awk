@@ -78,7 +78,7 @@ function gr_dfs(v,   k, e, u) {
 }
 
 function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, hi, ln,
-                   sum, cnt, ah,
+                   sum, cnt, ah, sl, ok_, kk, u, d, l, rr,
                    g, top, bot, rb, f, t, pv, ne0, b, tl, tr, bl, br, sd, out, key) {
     GR_SKIP = sprintf("%c", 1)
     GR_R  = sprintf("%c[0m", 27)
@@ -88,7 +88,17 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
     for (i in GR_G)    delete GR_G[i]
     for (i in GR_LC)   delete GR_LC[i]
     for (i in GR_BUS)  delete GR_BUS[i]
-    for (i in GR_USED) delete GR_USED[i]
+    GR_NT = 0; GR_NBD = 0
+    for (i in GR_OCC)  delete GR_OCC[i]
+    for (i in GR_FCNT) delete GR_FCNT[i]
+    for (i in GR_TCNT) delete GR_TCNT[i]
+    for (i in GR_BID)  delete GR_BID[i]
+    for (i in GR_EB)   delete GR_EB[i]
+    for (i in GR_BLO)  delete GR_BLO[i]
+    for (i in GR_BHI)  delete GR_BHI[i]
+    for (i in GR_BSL)  delete GR_BSL[i]
+    for (i in GR_SLOT) delete GR_SLOT[i]
+    for (i in GR_STR)  delete GR_STR[i]
     for (i in GR_SEEN) delete GR_SEEN[i]
     for (i in GR_ADJN) delete GR_ADJN[i]
     for (i in GR_VIS)  delete GR_VIS[i]
@@ -187,22 +197,49 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
             i = GR_LN[L,k]; GR_X[i]=x; GR_CX[i]=x+int(gr_w(i)/2); x += gr_w(i)+3
         }
     }
-    # 每個層間隙有幾條邊 —— 直線邊也要算。
-    # ⚠️ 只算轉彎的邊會出事：直線邊的標籤若固定放在某一列，就會跟第一條轉彎邊的
-    # 標籤撞在一起（實測 ER 的「走哪個渠道」壓在「提出」旁邊）。
-    # 每條邊都拿一組（標籤列 + 線列），標籤就不可能互相蓋。
+    # 邊要先「綁成束」再配列，不能一條一條配。
+    #
+    # 扇形展開（一個節點連到五個）的五條邊起點都是同一格，區間全都重疊 ——
+    # 一條一條配的話會排成五列階梯，整張圖散掉。正確畫法是共用一條匯流排，
+    # 接點畫成 ┬ 三叉。同理扇形收合（五個連到一個）。
+    #
+    # 綁法：先按來源綁（≥2 條），剩下的按目標綁（≥2 條），剩下的各自一束。
+    # 直線邊完全不進匯流排，它們的標籤共用一列（x 各不相同，不會撞）。
     for (e = 1; e <= GR_NEU; e++) {
         if (GR_DEAD[e] || GR_BACK[e] || GR_LAY[GR_ETU[e]] != GR_LAY[GR_EFU[e]] + 1) continue
-        GR_BUS[GR_LAY[GR_EFU[e]]]++
+        g = GR_LAY[GR_EFU[e]]
+        if (GR_CX[GR_EFU[e]] == GR_CX[GR_ETU[e]]) { GR_STR[g] = 1; continue }
+        GR_FCNT[g "," GR_EFU[e]]++
+        GR_TCNT[g "," GR_ETU[e]]++
+        GR_TURN[++GR_NT] = e
     }
-    # 間隙的列數：
-    #   第一列        兩端的基數標記
-    #   接下來每條轉彎的邊各兩列：一列放它的標籤，一列放它的匯流排
-    #   最後一列      箭頭
-    # 標籤一定要有自己的列。之前讓它「太長就放線的右邊」，結果直接壓在別條邊的
-    # 線上（實測 ER 三條邊擠在一起時整個中段變成一團看不懂的東西）。
+    for (j = 1; j <= GR_NT; j++) {
+        e = GR_TURN[j]; g = GR_LAY[GR_EFU[e]]
+        if (GR_FCNT[g "," GR_EFU[e]] >= 2)      key = g ",F," GR_EFU[e]
+        else if (GR_TCNT[g "," GR_ETU[e]] >= 2) key = g ",T," GR_ETU[e]
+        else                                    key = g ",E," e
+        if (!(key in GR_BID)) { GR_NBD++; GR_BID[key] = GR_NBD; GR_BG_[GR_NBD] = g }
+        b = GR_BID[key]; GR_EB[e] = b
+        sx = GR_CX[GR_EFU[e]]; tx = GR_CX[GR_ETU[e]]
+        lo = sx < tx ? sx : tx; hi = sx > tx ? sx : tx
+        if (!(b in GR_BLO) || lo < GR_BLO[b]) GR_BLO[b] = lo
+        if (!(b in GR_BHI) || hi > GR_BHI[b]) GR_BHI[b] = hi
+    }
+    # 束之間做區間著色：橫向範圍不重疊就共用同一列
+    for (b = 1; b <= GR_NBD; b++) {
+        g = GR_BG_[b]
+        for (sl = 1; ; sl++) {
+            ok_ = 1
+            for (x = GR_BLO[b] - 1; x <= GR_BHI[b] + 1; x++) if (GR_OCC[g, sl, x]) { ok_ = 0; break }
+            if (ok_) break
+        }
+        for (x = GR_BLO[b] - 1; x <= GR_BHI[b] + 1; x++) GR_OCC[g, sl, x] = 1
+        GR_BSL[b] = sl
+        if (sl > GR_BUS[g]) GR_BUS[g] = sl
+    }
+    # 間隙列數 = 基數列 + （有直線邊就 1 列標籤）+ 匯流排數 × 2 + 箭頭列
     for (L = 1; L <= GR_MAXL; L++) {
-        GR_GAPR[L] = 2 * GR_BUS[L] + 2
+        GR_GAPR[L] = 1 + (GR_STR[L] ? 1 : 0) + 2 * GR_BUS[L] + 1
         if (GR_GAPR[L] < 3) GR_GAPR[L] = 3
     }
     GR_BASE[1] = 1
@@ -234,7 +271,8 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
         }
         gr_put(r2, x, bl); for (x2=x+1; x2<=x+W-2; x2++) GR_G[r2,x2]="─"; gr_put(r2, x+W-1, br)
     }
-    # 畫邊
+    # 畫邊。分兩趟：先把每一束在它那列的「連接方向」記下來，再依方向決定字形。
+    # 一格可能同時有上下左右四個方向（十字），字形不能邊畫邊猜。
     for (e = 1; e <= GR_NEU; e++) {
         f = GR_EFU[e]; t = GR_ETU[e]; key = f "," t
         if (GR_DEAD[e]) continue
@@ -247,37 +285,55 @@ function gr_render(   i, e, j, k, pass, ch, L, tw, x, x2, W, H, r, sx, tx, lo, h
         top = GR_BASE[g] + GR_MAXH[g]
         bot = top + GR_GAPR[g] - 1
         ln = GR_EDU[e] ? "┊" : "│"
-        # 兩端的小標記（ER 的基數）緊貼線畫，不要塞進標籤 ——
-        # 標籤太長時兩條邊會互相擠掉。mermaid 也是放兩端。
+        ah = GR_V[t] ? ln : "▼"
         if (GR_CFM[key] != "") gr_put(top, sx+1, GR_CFM[key])
         if (GR_CTM[key] != "") gr_put(bot, tx+1, GR_CTM[key])
-        GR_USED[g]++
-        rb = top + 2 * GR_USED[g]      # 標籤在 rb-1，線在 rb
-        # 虛擬節點只是跨層路徑的中繼點，不該有箭頭 ——
-        # 畫上去會變成「▼ 後面接著一條線」，看起來像箭頭指到空白處。
-        ah = GR_V[t] ? ln : "▼"
         if (sx == tx) {
+            # 直線邊：標籤貼在來源正下方那一列（所有直線邊共用）
             for (r = top; r < bot; r++) gr_v(r, sx, ln)
             GR_G[bot,sx] = ah
-            if (GR_EGM[key] != "")
-                gr_put(rb - 1, sx + 2, GR_EGM[key])
+            if (GR_EGM[key] != "") gr_put(top + 1, sx + 2, GR_EGM[key])
             continue
         }
+        b = GR_EB[e]
+        rb = top + (GR_STR[g] ? 1 : 0) + 2 * GR_BSL[b]
+        # 來源垂到匯流排、匯流排垂到目標
         for (r = top; r < rb; r++) gr_v(r, sx, ln)
-        lo = sx<tx ? sx : tx; hi = sx>tx ? sx : tx
-        GR_G[rb,sx] = (tx>sx) ? "└" : "┘"
-        for (x = lo+1; x <= hi-1; x++) gr_h(rb, x)
-        GR_G[rb,tx] = (tx>sx) ? "┐" : "┌"
         for (r = rb+1; r < bot; r++) gr_v(r, tx, ln)
         GR_G[bot,tx] = ah
-        # 標籤放自己那一列（rb-1），置中在跨距上。
-        # 那一列除了別條邊的縱線之外是空的，所以不會蓋到橫線與轉角。
+        # 記下方向：U 上面有線、D 下面有線、L/R 橫線往左/右延伸
+        DIR[rb, sx] = DIR[rb, sx] "U"
+        DIR[rb, tx] = DIR[rb, tx] "D"
+        lo = sx < tx ? sx : tx; hi = sx > tx ? sx : tx
+        for (x = lo; x < hi; x++) { DIR[rb, x] = DIR[rb, x] "R"; DIR[rb, x+1] = DIR[rb, x+1] "L" }
+        # 標籤放在 rb-1，貼著目標那一側 —— 一束裡每條邊的 tx 不同，不會互相蓋
         if (GR_EGM[key] != "") {
-            x = lo + int((hi - lo - dw(GR_EGM[key])) / 2)
+            x = tx - int(dw(GR_EGM[key]) / 2)
             if (x < 1) x = 1
             gr_put(rb - 1, x, GR_EGM[key])
         }
     }
+    # 依方向決定接點字形
+    for (kk in DIR) {
+        split(kk, KP, SUBSEP)
+        r = KP[1] + 0; x = KP[2] + 0
+        u = (index(DIR[kk], "U") > 0); d = (index(DIR[kk], "D") > 0)
+        l = (index(DIR[kk], "L") > 0); rr = (index(DIR[kk], "R") > 0)
+        if (u && d && l && rr) ch = "┼"
+        else if (u && l && rr)  ch = "┴"
+        else if (d && l && rr)  ch = "┬"
+        else if (u && d && rr)  ch = "├"
+        else if (u && d && l)   ch = "┤"
+        else if (u && rr)       ch = "└"
+        else if (u && l)        ch = "┘"
+        else if (d && rr)       ch = "┌"
+        else if (d && l)        ch = "┐"
+        else if (l && rr)       ch = "─"
+        else if (u && d)        ch = "│"
+        else                    ch = "─"
+        GR_G[r, x] = ch
+    }
+    for (kk in DIR) delete DIR[kk]
     out = ""
     for (r = 1; r <= GR_BASE[GR_MAXL] + GR_MAXH[GR_MAXL] - 1; r++) out = out gr_row(r) "\n"
     # 回邊與跨層邊列在圖下面 —— 硬畫進格子會穿過別人的方塊
