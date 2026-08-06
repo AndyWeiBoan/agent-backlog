@@ -45,7 +45,9 @@ if [ ! -s "$f" ]; then
     exit 1
 fi
 
-tmux send-keys -t "$id" claude Enter
+# send-keys 是「把這串字打進那個 pane 的 shell」，所以帶旗標的指令
+# （claude --permission-mode …）原樣就能用，不需要額外處理引號。
+tmux send-keys -t "$id" "$AB_DISPATCH_CMD" Enter
 
 # 等 claude 起來再貼內容。太早貼會被還沒準備好的 TUI 吃掉。
 # macOS 沒有 timeout/gtimeout，所以用 until 迴圈自己數。
@@ -60,7 +62,7 @@ while [ "$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)" = "$
 done
 if [ "$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)" = "$shell_before" ]; then
     rm -f "$f"
-    tmux display-message -d 4000 "$(msg "agent-backlog: claude 沒有起來（那個 pane 的 PATH 裡有嗎？）" "agent-backlog: claude did not start (is it on that pane PATH?)")"
+    tmux display-message -d 4000 "$(msg "agent-backlog: 「$AB_DISPATCH_CMD」沒有起來（那個 pane 的 PATH 裡有嗎？）" "agent-backlog: '"'"'$AB_DISPATCH_CMD'"'"' did not start (is it on that pane PATH?)")"
     exit 1
 fi
 sleep 1        # 起來之後再給它一點時間畫完輸入框

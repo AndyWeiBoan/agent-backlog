@@ -189,7 +189,7 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 | `C-d` `C-u` | scroll preview half page |
 | `C-f` `C-b` | scroll preview full page |
 | `Enter` | switch to that item's window |
-| `C-g` | dispatch: start `claude` there and paste the item in |
+| `C-g` | dispatch: run `@agent_backlog_dispatch_cmd` there and paste the item in |
 | `C-t` | cycle status (pending → blocked → done) |
 | `C-k` `C-j` | raise / lower priority (1–10, default 1) |
 | `C-x` | delete (asks `y`/`n` first; stashes to a tmux buffer before killing) |
@@ -270,6 +270,27 @@ Status is an arbitrary string; anything custom (say `review`) falls back to ligh
 | `@agent_backlog_scope` | `session` | `session` or `global` |
 | `@agent_backlog_compat` | — | `on` = also read legacy `@prompt` / `@status` |
 | `@agent_backlog_lang` | `en` | `zh-TW` switches the UI to Traditional Chinese |
+| `@agent_backlog_dispatch_cmd` | `claude` | the command typed into the window on dispatch |
+
+### Dispatching without permission prompts
+
+After `C-g`, Claude Code stops and asks `Do you want to proceed?` by default — which
+means walking into every window to press Yes, defeating the point of dispatching. To
+skip the prompts:
+
+```tmux
+set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
+```
+
+> **Not the default, deliberately.** `bypassPermissions` lets a dispatched agent do
+> anything in that directory unattended — delete files, `git push`, reach the network,
+> no questions asked. That is your call to make, not a plugin's default.
+>
+> For a middle ground, `acceptEdits` auto-approves file edits only. Full list:
+> `claude --help`, under `--permission-mode`.
+
+The same option is how you swap the agent — `codex`, `opencode`, `pi` all work the
+same way. The plugin should not pick one for you.
 
 Want `Ctrl+/` instead of a prefix key:
 

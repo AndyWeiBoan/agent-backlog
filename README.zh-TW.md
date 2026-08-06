@@ -177,7 +177,7 @@ MCP server **也是零依賴的** —— POSIX `sh` + `awk`，連 JSON 解析器
 | `C-d` `C-u` | 預覽捲半頁 |
 | `C-f` `C-b` | 預覽捲整頁 |
 | `Enter` | 切到該待辦的 window |
-| `C-g` | 派工：在那裡啟動 `claude` 並把內容貼進去 |
+| `C-g` | 派工：在那裡執行 `@agent_backlog_dispatch_cmd` 並把內容貼進去 |
 | `C-t` | 輪替狀態（pending → blocked → done） |
 | `C-k` `C-j` | 優先度 +1 / -1（1–10，預設 1） |
 | `C-x` | 刪除（先問 `y`/`n`，刪前會 stash 到 tmux buffer） |
@@ -249,6 +249,26 @@ sh scripts/restore.sh <檔名> [session]     # 同名的會跳過，不覆蓋
 | `@agent_backlog_scope` | `session` | `session` 或 `global` |
 | `@agent_backlog_compat` | — | `on` = 連舊版的 `@prompt` / `@status` 一起認 |
 | `@agent_backlog_lang` | `en` | 設 `zh-TW` 介面就變繁體中文 |
+| `@agent_backlog_dispatch_cmd` | `claude` | 派工時在那個 window 裡打的指令 |
+
+### 派工要免問權限
+
+`C-g` 派工之後，Claude Code 預設會停下來問 `Do you want to proceed?` ——
+那你就得走進每一個 window 按 Yes，派工就沒意義了。要免問：
+
+```tmux
+set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
+```
+
+> **預設不幫你開。** `bypassPermissions` 等於派出去的 agent 可以在那個目錄裡
+> 無條件做任何事 —— 刪檔、`git push`、對外連線，全部不問。那是你自己該做的
+> 決定，不該是一個 plugin 的預設值。
+>
+> 想折衷的話 `acceptEdits` 只自動放行檔案編輯，其他照樣問。
+> 完整清單：`claude --help` 的 `--permission-mode`。
+
+這個設定同時也是「換別的 agent」的方法 —— `codex`、`opencode`、`pi`
+都是同樣的用法，plugin 不該替你決定用哪一個。
 
 想用 `Ctrl+/` 這種不需要 prefix 的鍵：
 

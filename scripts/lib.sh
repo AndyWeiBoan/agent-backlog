@@ -53,6 +53,24 @@ case $AB_LANG in zh|zh-TW|zh_TW) AB_LANG=zh ;; *) AB_LANG=en ;; esac
 AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
 [ -z "$AB_SCOPE" ] && AB_SCOPE=session
 
+# 派工時在那個 window 裡打什麼指令。預設 claude。
+#
+# 這裡不寫死 claude 的兩個理由：
+#
+# 1. agent 不只一種。codex / opencode / pi 都是同樣的用法 ——
+#    我們要做的只是「不要替使用者決定」。
+#
+# 2. 權限模式。派工的重點是丟出去就不用管它，但 Claude Code 預設會停下來問
+#    「Do you want to proceed?」—— 那你就得走進每一個 window 按 Yes，
+#    整個派工就沒意義了。要免問就設：
+#        set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
+#
+# ⚠️ 預設**不會**幫你開 bypassPermissions。那等於任何人裝了這個 plugin，
+#    派出去的 agent 就能在他的 repo 裡無條件做任何事（刪檔、push、對外連線）。
+#    那是使用者自己該做的決定，不是 plugin 的預設值。
+AB_DISPATCH_CMD=$(tmux show-options -gqv "@${PREFIX}_dispatch_cmd" 2>/dev/null)
+[ -z "$AB_DISPATCH_CMD" ] && AB_DISPATCH_CMD=claude
+
 # 列出待辦：window_id US 狀態 US 標題 US 優先度
 # $1 可覆寫範圍（session / global），給選單的即時切換用。
 #
