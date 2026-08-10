@@ -270,6 +270,24 @@ set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
 這個設定同時也是「換別的 agent」的方法 —— `codex`、`opencode`、`pi`
 都是同樣的用法，plugin 不該替你決定用哪一個。
 
+### 讓派出去的 agent 在關鍵時刻問更強的模型
+
+Claude Code 有個沒列在 `--help` 裡的 `--advisor` 旗標（互動時是 `/advisor`，
+設定檔裡是 `advisorModel`）：執行的模型可以把整段對話交給一個更強的顧問模型看，
+拿回策略指導再繼續。派工正好是它的場景 —— 那些 window 沒人盯著，
+一開始方向走錯就會一路錯下去。
+
+```tmux
+set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions --advisor fable'
+```
+
+> 什麼時候問顧問是執行的模型自己決定的，不是每一回合都問 ——
+> 沒什麼好規劃的任務它通常不會問。
+>
+> 顧問模型不能亂填。填了不能當顧問的模型，`claude` 會直接拒絕啟動
+> （`The model "…" cannot be used as an advisor.`），派工那邊就會顯示
+> 「沒有起來」。
+
 想用 `Ctrl+/` 這種不需要 prefix 的鍵：
 
 ```tmux

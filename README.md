@@ -292,6 +292,25 @@ set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
 The same option is how you swap the agent — `codex`, `opencode`, `pi` all work the
 same way. The plugin should not pick one for you.
 
+### Letting a dispatched agent consult a stronger model
+
+Claude Code has an `--advisor` flag that is not listed in `--help` (`/advisor`
+interactively, `advisorModel` in settings): the executing model can hand the whole
+transcript to a stronger advisor model and get strategic guidance before continuing.
+Dispatch is exactly its case — nobody is watching those windows, so a wrong turn early
+stays wrong.
+
+```tmux
+set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions --advisor fable'
+```
+
+> The executing model decides when to consult, not every turn — for work with nothing
+> to plan it usually never does.
+>
+> The advisor model is validated. Name one that cannot act as an advisor and `claude`
+> refuses to start at all (`The model "…" cannot be used as an advisor.`), and dispatch
+> reports that it did not come up.
+
 Want `Ctrl+/` instead of a prefix key:
 
 ```tmux

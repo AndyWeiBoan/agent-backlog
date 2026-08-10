@@ -65,6 +65,11 @@ AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
 #    整個派工就沒意義了。要免問就設：
 #        set -g @agent_backlog_dispatch_cmd 'claude --permission-mode bypassPermissions'
 #
+# 3. 旗標是使用者的事，不是這裡的事。這整串原樣送進那個 pane 的 shell，
+#    所以任何旗標都直接能用 —— 例如讓派出去的 agent 卡住時去問更強的模型：
+#        … 'claude --permission-mode bypassPermissions --advisor fable'
+#    這也是為什麼這裡不該長出第二個「顧問模型」選項：已經做得到的事不必再開一個洞。
+#
 # ⚠️ 預設**不會**幫你開 bypassPermissions。那等於任何人裝了這個 plugin，
 #    派出去的 agent 就能在他的 repo 裡無條件做任何事（刪檔、push、對外連線）。
 #    那是使用者自己該做的決定，不是 plugin 的預設值。
