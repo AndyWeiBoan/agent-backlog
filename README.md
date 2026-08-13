@@ -196,6 +196,7 @@ and a key bound only as `A` does *nothing at all* when you press `a`, with no er
 | `Tab` | toggle scope: this session ⇄ all sessions |
 | `C-r` | reload the list |
 | `ESC` `C-c` | leave, returning to where you came from |
+| `C-o` | leave to your workspace — the last non-item window you opened the menu from |
 | `prefix` + `⌥←` `⌥→` | resize the divider (tmux's own binding; width is remembered) |
 
 Every row starts with the item's **`window_id`** (`@355`), dimmed, and the preview

@@ -11,6 +11,7 @@ roadmap），內容已經不成立，所以刪掉了 —— 想看的話在 git 
 agent-backlog.tmux        TPM 進入點：檢查平台與 tmux 版本、綁鍵
 scripts/
   lib.sh                  option key、ab_items（唯一的清單來源與排序）、狀態/優先度寫入
+                          ab_alive（window/pane 還在不在 —— 見規則 13）
   open.sh                 開選單（每個 session 一份）
   chooser.sh              左窗格主迴圈：讀鍵 → 篩選 → 畫清單 → 畫預覽
   preview_pane.sh         右窗格：從 fifo 讀什麼就印什麼
@@ -43,6 +44,11 @@ LC_ALL=C awk -f width.awk -f list.awk
 ## 不可打破的規則
 
 這些不是風格偏好，每一條都對應一個實際壞過的東西。
+
+（另外：選單記兩個位置。`@agent_backlog_return` 是「按鍵當下在哪」，ESC 回它；
+`@agent_backlog_home` 是「最後一次從**不是待辦**的 window 開選單的地方」，`C-o` 回它。
+只有一個的話，「工作區 → 選單 → 進待辦 → 選單」之後工作區就沒有任何東西指向它了 ——
+它不在清單裡，錨點也被覆蓋掉。細節見 `open.sh`。）
 
 ### 1. `LC_ALL=C` 是必要條件，不是保險
 
@@ -107,6 +113,23 @@ tmux 的當前 window 是記 index 的。`-d` 不解決這件事（它只是換�
 沒有「整份取代」。`append` 只能追加，`check` 只能翻一個 `[ ]`↔`[x]`，
 `delete` 一次一則且必須指名、刪前 stash 進 tmux buffer。
 這個系統沒有版本歷史、沒有 undo。
+
+### 13. 不要用 `display -p -t <id>` 判斷它還在不在
+
+實測 tmux 3.6a 對**已經不存在**的 window / pane 一樣回 rc=0（輸出是空的）。
+所以 `tmux display -p -t "$id" '' >/dev/null 2>&1 || …` 這種寫法是**假的檢查**，
+永遠成立。用 `lib.sh` 的 `ab_alive()` —— 它拿 `list-windows -a` / `list-panes -a`
+的實際清單來比對。
+
+被這條咬過兩處：主迴圈「pane 沒了就結束」的保險（等於沒有），
+以及 `C-o` 回工作區時對已關閉的目標（會變成殺掉選單然後讓 tmux 亂挑一個 window）。
+
+### 14. 提示列必須真的塞得進它負責的寬度
+
+`list.awk` 的三版提示是按寬度挑的，門檻用 `dw()` 現算，不寫死數字。
+寫死過一次 96，但長版其實是 158（中）／173（英）欄 ——
+96～172 欄的窗格一路看到被切一半的提示。
+只有最短的那版要自己保證 ≤ 40（`chooser.sh` 允許的最小窗格）。
 
 ## 改完之後要驗什麼
 

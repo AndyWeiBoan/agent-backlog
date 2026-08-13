@@ -23,7 +23,19 @@ if [ -n "$W" ]; then tmux select-window -t "$W"; exit 0; fi
 
 # 記住開選單之前在哪 —— 取消時要回得去，不然使用者會掉在某個待辦的 shell 裡。
 # 存在 session 層級，這樣不同 session 各記各的。
-tmux set-option -t "$SESS" "$K_RETURN" "$(tmux display -p '#{window_id}')" 2>/dev/null
+CUR=$(tmux display -p '#{window_id}')
+tmux set-option -t "$SESS" "$K_RETURN" "$CUR" 2>/dev/null
+
+# 「家」= 最後一次從**不是待辦**的 window 開選單的地方。C-o 靠這個回去。
+#
+# ⚠️ 為什麼要跟 K_RETURN 分開存：
+# K_RETURN 每次開選單都會被覆蓋。所以「在工作區開選單 → Enter 進某則待辦 →
+# 再開選單」之後，K_RETURN 已經變成那則待辦，而工作區那個 window **不在清單裡**
+# （它沒有 prompt option），plugin 也不再記得它 —— 使用者就再也回不去了。
+# 只在「現在不是待辦」時才更新，工作區的位置才活得過這條路徑。
+if [ "$(tmux display -p -t "$CUR" "$AB_FILTER" 2>/dev/null)" != 1 ]; then
+    tmux set-option -t "$SESS" "$K_HOME" "$CUR" 2>/dev/null
+fi
 # 明確指定 session。不指定的話 tmux 會用「當前的」——
 # 從 hook / run-shell 之類的非互動情境呼叫時，那不一定是使用者所在的 session，
 # 選單就會開到別的地方去（然後看起來像沒反應）。

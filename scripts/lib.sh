@@ -8,6 +8,8 @@ K_CURSOR="@${PREFIX}_cursor"     # 目前選中的 window_id，存成 global opt
                                  # 理由：client-resized hook 是另一個行程，讀不到 sh 變數
 K_PRIORITY="@${PREFIX}_priority" # 1..10，越大越先做。沒設 = 1
 K_RETURN="@${PREFIX}_return"     # 開選單之前所在的 window，取消時回去
+K_HOME="@${PREFIX}_home"         # 最後一次「從不是待辦的 window」開選單的地方
+                                 # 跟 K_RETURN 不一樣，見 open.sh 的說明
 K_WIDTH="@${PREFIX}_width"       # 左窗格寬度，記住使用者調過的
 
 # 欄位分隔符用 tab。
@@ -16,6 +18,25 @@ K_WIDTH="@${PREFIX}_width"       # 左窗格寬度，記住使用者調過的
 # tab 兩個版本都原樣通過。docs 裡「不要用 tab」的警告是指預設 IFS/FS 會併連續
 # 欄位；這裡 awk 用明確分隔符 split、shell 用 cut -d，都不會併。
 US=$(printf '\t')
+
+# 某個 window（@…）或 pane（%…）還在不在。
+#
+# ⚠️ 不可以用 `tmux display -p -t "$id" '' >/dev/null 2>&1` 判斷。
+# 實測 tmux 3.6a 對**已經不存在**的 window / pane 一樣回 rc=0（輸出是空的），
+# 那個寫法等於完全沒有檢查。只能拿實際的清單來比對。
+# 用 shell 的迴圈而不是 grep —— grep 不在 agent-backlog.tmux 的依賴清單裡。
+ab_alive() {
+    _id=${1:-}
+    [ -z "$_id" ] && return 1
+    case $_id in
+        %*) _c=list-panes;   _f='#{pane_id}'   ;;
+        *)  _c=list-windows; _f='#{window_id}' ;;
+    esac
+    for _x in $(tmux "$_c" -a -F "$_f" 2>/dev/null); do
+        [ "$_x" = "$_id" ] && return 0
+    done
+    return 1
+}
 
 # ── 相容模式 ──────────────────────────────────────────
 # @agent_backlog_compat = on 時，連舊版 action-items 的 @prompt / @status 也一起認。

@@ -77,6 +77,28 @@ finish() {
     exit 0
 }
 
+# C-o：回工作區。跟 ESC 是兩件事 ——
+# ESC 是「取消」，回到按鍵的那個 window；從待辦裡開選單時那就是待辦本身。
+# 這個是「離開 backlog」，回到最後一次從非待辦 window 開選單的地方。
+# 沒有它的話，「工作區 → 選單 → 進待辦 → 選單」之後工作區就沒有路回得去了。
+go_home() {
+    _h=$(tmux show-options -qv -t "$SESS" "$K_HOME" 2>/dev/null)
+    # 家可能已經被關掉了。空 target 對 tmux 等於「當前的」，不能就這樣送出去。
+    if ! ab_alive "$_h"; then
+        if [ "$AB_LANG" = zh ]; then
+            _m='沒有工作區可以回 —— 從不是待辦的 window 開一次選單就會記住'
+        else
+            _m='No workspace to go back to — open the menu once from a non-item window'
+        fi
+        # 用 tmux 的訊息列，不要自己畫在最後一列 ——
+        # 主迴圈每 3 秒會重畫，自己畫的訊息可能一秒都撐不到。
+        tmux display-message -d 4000 "agent-backlog: $_m" 2>/dev/null
+        return
+    fi
+    TARGET=$_h
+    finish
+}
+
 # 太小就不要開 —— 版面會爛掉，而且後面所有計算都失去意義。
 # （實際遇過：一個 193x1 的 client 附著，tmux 把整個 session 縮到 1 列）
 _h=$(tmux display -p -t "$LPANE" '#{pane_height}')
@@ -487,6 +509,7 @@ process() {
             11)    bump_priority 1 ;;                         # C-k 提高
             10)    bump_priority -1 ;;                        # C-j 降低
             24)    remove ;;                                  # C-x 刪除（會先確認）
+            15)    go_home ;;                                # C-o 回工作區
             # C-l：重畫。也是 client-resized / after-resize-pane 等 hook 的喚醒鍵。
             # 這裡只記旗標 —— 實際量測與重畫在主迴圈做，才有機會先把
             # 連續湧進來的 resize 事件吸收掉。
@@ -566,7 +589,7 @@ while :; do
     if [ -z "$batch" ]; then
         # 逾時（或 tty 沒了）。先確認 pane 還在，不在就結束 ——
         # 少了這個判斷，終端機關掉之後主迴圈會空轉。
-        tmux display -p -t "$LPANE" '' >/dev/null 2>&1 || exit 0
+        ab_alive "$LPANE" || exit 0
         poll
         if [ "$DIRTY" = 1 ]; then
             draw_list

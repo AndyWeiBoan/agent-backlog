@@ -41,16 +41,24 @@ BEGIN {
         T_THIS  = "· 本 session（Tab 看全部）"
         T_ALL   = "· 全部 session（Tab 切回本 session）"
         T_EMPTY = "沒有符合的待辦"
-        T_HINT  = " ↑↓ 選擇  打字篩選（標題或 @id）  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-k/C-j 優先度  C-x 刪除  Tab 範圍  ESC 離開"
-        T_HINT2 = " ↑↓ 選擇 · C-e/C-y 捲預覽 · Enter 切過去 · ESC 離開"
+        T_HINT  = " ↑↓ 選擇  打字篩選（標題或 @id）  捲預覽 C-e/C-y·C-d/C-u·C-f/C-b  Enter 切過去  C-g 派工  C-t 狀態  C-k/C-j 優先度  C-x 刪除  Tab 範圍  C-o 回工作區  ESC 離開"
+        T_HINT2 = " ↑↓ 選擇 · 打字篩選 · Enter 切過去 · C-g 派工 · C-t 狀態 · C-x 刪除 · C-o 回工作區 · ESC 離開"
+        T_HINT3 = " ↑↓ · Enter 進入 · C-o 回家 · ESC 離開"
     } else {
         T_ITEMS = "items"
         T_THIS  = "· this session (Tab: all)"
         T_ALL   = "· all sessions (Tab: this one)"
         T_EMPTY = "no matching items"
-        T_HINT  = " ↑↓ select   type to filter (title or @id)   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-k/C-j priority   C-x delete   Tab scope   ESC quit"
-        T_HINT2 = " ↑↓ select · C-e/C-y scroll · Enter switch · ESC quit"
+        T_HINT  = " ↑↓ select   type to filter (title or @id)   C-e/C-y scroll   Enter switch   C-g dispatch   C-t status   C-k/C-j priority   C-x delete   Tab scope   C-o workspace   ESC quit"
+        T_HINT2 = " ↑↓ select · Enter switch · C-g dispatch · C-t status · C-x delete · C-o back · ESC quit"
+        T_HINT3 = " ↑↓ · Enter open · C-o back · ESC quit"
     }
+    # 門檻用量的，不要寫死數字。原本寫死 96，但長版其實是 158（中）／173（英）欄，
+    # 所以 96~172 欄的窗格一直看到被切一半的提示。
+    # 用 dw() 算的話，以後改提示文字不用同時記得改門檻。
+    # （T_HINT3 仍然必須自己塞得進 40 —— 那是 chooser 允許的最小寬度。）
+    W_HINT  = dw(T_HINT)
+    W_HINT2 = dw(T_HINT2)
     ql = tolower(q)
     n = 0
     rows = h - 4                # 扣掉查詢列、計數列、空行、提示列
@@ -118,13 +126,17 @@ END {
     }
     printf "%sJ", E
 
-    # 最後一列：窄的時候用短版提示。長版在一般寬度（左窗格約 50 欄）會被切掉，
-    # 切一半的提示比沒有提示更糟 —— 看起來像壞掉。
+    # 最後一列：按寬度挑提示。切一半的提示比沒有提示更糟 —— 看起來像壞掉。
+    #
+    # ⚠️ 每一版都必須「真的」塞得進它負責的寬度，量過再改。
+    # 之前兩版的短版是 53 / 51 欄，但 chooser 允許的最小窗格是 40 ——
+    # 45 欄的左窗格就已經被截成 `… Enter switch ·t`。
+    # 量法：LC_ALL=C awk -f width.awk -f <印 dw($0) 的小 script>
     # 最後一列：寫到最後一格會讓終端機捲一行，把查詢列頂掉。
     # 關掉自動換行（DECAWM）再寫，超出的直接被丟掉，就完全不用算顯示寬度 ——
     # 正好繞開 awk 算不了 East Asian Width 的老問題。
     printf "%s?7l%s%d;1H%s%s%s%s?7h", E, E, h, DIM,
-           (w >= 96 ? T_HINT : T_HINT2), R, E
+           (w >= W_HINT ? T_HINT : (w >= W_HINT2 ? T_HINT2 : T_HINT3)), R, E
 }
 
 function out(s) { printf "%s%s\r\n", s, EL }
