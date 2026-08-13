@@ -38,6 +38,27 @@ ab_alive() {
     return 1
 }
 
+# 這個 session 裡第一個「不是待辦、也不是選單」的 window，找不到就印空的。
+#
+# C-o 的退路。K_HOME 只有在「從非待辦的 window 開選單」時才會寫入，
+# 但實際上使用者常常是直接在某則待辦裡按開選單鍵 —— 那 K_HOME 會一直是空的，
+# 「回工作區」就變成一個要先學會怎麼觸發才會動的功能。
+# 與其叫使用者去做某個動作，不如自己找：index 最小的非待辦 window
+# 幾乎一定就是他原本工作的地方（多半是 index 0 那個 shell 或 agent）。
+#
+# 欄位順序把 window_name 放最後 —— 標題是使用者寫的，可能含分隔符。
+ab_workspace() {
+    _s=${1:-}
+    [ -z "$_s" ] && return 1
+    tmux list-windows -t "$_s" -F "$AB_FILTER$US#{window_id}$US#{window_name}" 2>/dev/null |
+    while IFS="$US" read -r _it _id _nm; do
+        [ "$_it" = 1 ] && continue
+        [ "$_nm" = '[backlog]' ] && continue
+        printf '%s' "$_id"
+        break
+    done
+}
+
 # ── 相容模式 ──────────────────────────────────────────
 # @agent_backlog_compat = on 時，連舊版 action-items 的 @prompt / @status 也一起認。
 #

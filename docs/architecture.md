@@ -48,7 +48,12 @@ LC_ALL=C awk -f width.awk -f list.awk
 （另外：選單記兩個位置。`@agent_backlog_return` 是「按鍵當下在哪」，ESC 回它；
 `@agent_backlog_home` 是「最後一次從**不是待辦**的 window 開選單的地方」，`C-o` 回它。
 只有一個的話，「工作區 → 選單 → 進待辦 → 選單」之後工作區就沒有任何東西指向它了 ——
-它不在清單裡，錨點也被覆蓋掉。細節見 `open.sh`。）
+它不在清單裡，錨點也被覆蓋掉。細節見 `open.sh`。
+
+`@agent_backlog_home` 只在「從非待辦的 window 開選單」時才寫得到，
+而實際上使用者常常整段時間都待在待辦裡按開選單鍵 —— 那它會一直是空的。
+所以 `C-o` 一定要有 `ab_workspace()` 這條退路（session 裡第一個非待辦 window），
+不然這個功能等於要先用某個特定順序操作一次才會動。）
 
 ### 1. `LC_ALL=C` 是必要條件，不是保險
 

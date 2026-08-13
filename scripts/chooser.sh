@@ -83,7 +83,10 @@ finish() {
 # 沒有它的話，「工作區 → 選單 → 進待辦 → 選單」之後工作區就沒有路回得去了。
 go_home() {
     _h=$(tmux show-options -qv -t "$SESS" "$K_HOME" 2>/dev/null)
-    # 家可能已經被關掉了。空 target 對 tmux 等於「當前的」，不能就這樣送出去。
+    # 沒記過（常態：使用者一直都是在待辦裡按開選單鍵）或家已經被關掉了，
+    # 就自己找這個 session 裡第一個非待辦的 window。
+    ab_alive "$_h" || _h=$(ab_workspace "$SESS")
+    # 空 target 對 tmux 等於「當前的」，不能就這樣送出去。
     if ! ab_alive "$_h"; then
         if [ "$AB_LANG" = zh ]; then
             _m='沒有工作區可以回 —— 從不是待辦的 window 開一次選單就會記住'
