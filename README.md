@@ -267,6 +267,7 @@ Status is an arbitrary string; anything custom (say `review`) falls back to ligh
 |---|---|---|
 | `@agent_backlog_key` | `A` | key after `prefix` |
 | `@agent_backlog_root_key` | — | prefix-less keys, space separated |
+| `@agent_backlog_home_key` | — | back-to-workspace key; bound in both key tables |
 | `@agent_backlog_no_key` | — | `on` = bind nothing, do it yourself |
 | `@agent_backlog_scope` | `session` | `session` or `global` |
 | `@agent_backlog_compat` | — | `on` = also read legacy `@prompt` / `@status` |
@@ -321,6 +322,30 @@ set -g @agent_backlog_root_key 'C-/ C-_'
 > **Bind both.** With extended keys (CSI u) off, terminals send `0x1F` for
 > `Ctrl+/`, which tmux calls `C-_`. Binding only `C-/` does nothing in most
 > terminals.
+
+### One key back to your workspace
+
+The list has `C-o`, but that is no help when you are sitting inside a dispatched
+agent's window. Bind a global key that works **both in the list and inside an item**:
+
+```tmux
+set -g @agent_backlog_home_key 'M-,'
+```
+
+It binds into two key tables. While the list is open the session's key-table is
+`agent-backlog`, so a root-table-only binding works inside items but not in the
+list — which reads as a key that works sometimes.
+
+> **Check your terminal sends the key first.** Legacy encoding only allows Ctrl
+> with `@A-Z[\]^_?`, so `C-,` `C-.` `C-;` **require** `set -s extended-keys on`.
+> If you would rather not touch that, use Alt — `M-,` goes through the ESC prefix
+> and needs no extended keys.
+>
+> To check whether a key reaches tmux at all:
+> ```tmux
+> bind-key -n C-, display-message 'it arrives'
+> ```
+> Nothing happening means the terminal never sent it — not a plugin problem.
 
 Rolling your own binding — pass `#{session_id}`, `run-shell` expands it at
 key-press time:

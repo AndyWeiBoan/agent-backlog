@@ -68,6 +68,24 @@ if [ -n "$rootkeys" ] && [ "$nokey" != "on" ]; then
     done
 fi
 
+# 回工作區的鍵。空白分隔可給多個。
+#
+# ⚠️ 一定要綁**兩張表**。選單開著的時候，chooser.sh 會把 session 的 key-table
+# 換成 agent-backlog（見它裡面的 kt_on），所以 root 表的綁定在選單裡不會生效 ——
+# 只綁 -n 的話「在列表裡按」就沒反應，而在待辦裡按又好的，看起來像時靈時不靈。
+#
+# ⚠️ Ctrl+, 這類鍵需要 extended-keys。傳統編碼只有 @A-Z[\]^_? 能配 Ctrl，
+# 逗號不在裡面 —— 終端機送出去的就只是「,」。要能用得先開：
+#     set -s extended-keys on
+homekeys=$(tmux show-options -gqv '@agent_backlog_home_key')
+if [ -n "$homekeys" ] && [ "$nokey" != "on" ]; then
+    for hk in $homekeys; do
+        tmux bind-key -n "$hk" run-shell "sh '$DIR/scripts/home.sh' '#{session_id}'"
+        tmux bind-key -T agent-backlog "$hk" \
+            run-shell "sh '$DIR/scripts/home.sh' '#{session_id}'"
+    done
+fi
+
 # 給使用者自己綁用的（記得把 #{session_id} 帶上）：
 #   run-shell "sh #{@agent_backlog_path}/scripts/open.sh '#{session_id}'"
 tmux set-option -g '@agent_backlog_path' "$DIR"

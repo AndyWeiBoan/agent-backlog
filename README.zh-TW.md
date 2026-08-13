@@ -246,6 +246,7 @@ sh scripts/restore.sh <檔名> [session]     # 同名的會跳過，不覆蓋
 |---|---|---|
 | `@agent_backlog_key` | `A` | `prefix` 之後的鍵 |
 | `@agent_backlog_root_key` | — | 不需要 prefix 的鍵，空白分隔可多個 |
+| `@agent_backlog_home_key` | — | 回工作區的鍵，兩張 key table 都會綁 |
 | `@agent_backlog_no_key` | — | `on` = 完全不綁，自己來 |
 | `@agent_backlog_scope` | `session` | `session` 或 `global` |
 | `@agent_backlog_compat` | — | `on` = 連舊版的 `@prompt` / `@status` 一起認 |
@@ -297,6 +298,28 @@ set -g @agent_backlog_root_key 'C-/ C-_'
 
 > **兩個都要綁。** extended keys（CSI u）關閉時，終端機對 `Ctrl+/` 送出的
 > 其實是 `0x1F`，tmux 認作 `C-_`。只綁 `C-/` 在多數終端機按了沒反應。
+
+### 一個鍵直接回工作區
+
+清單裡有 `C-o`，但你人在派出去的 agent 那個 window 時它幫不上忙。
+綁一個全域的鍵，在**清單裡和待辦裡都能按**：
+
+```tmux
+set -g @agent_backlog_home_key 'M-,'
+```
+
+它會綁到兩張 key table。清單開著的時候 session 的 key-table 是 `agent-backlog`，
+只綁 root 表的話「在待辦裡按有效、在清單裡按沒效」，看起來像時靈時不靈。
+
+> **選鍵之前先確認終端機送得出來。** 傳統編碼只有 `@A-Z[\]^_?` 能配 Ctrl，
+> 所以 `C-,` `C-.` `C-;` 這些**需要** `set -s extended-keys on`。
+> 不想動那個設定的話用 Alt：`M-,` 走的是 ESC 前綴，不需要 extended keys。
+>
+> 想確認某個鍵到底有沒有送到 tmux：
+> ```tmux
+> bind-key -n C-, display-message '有送到'
+> ```
+> 按下去沒反應就是終端機沒送出來，不是 plugin 的問題。
 
 自己綁的話，記得把 `#{session_id}` 帶上 —— `run-shell` 會在按鍵當下展開它：
 

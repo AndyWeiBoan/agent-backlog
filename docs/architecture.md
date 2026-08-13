@@ -16,6 +16,7 @@ scripts/
   chooser.sh              左窗格主迴圈：讀鍵 → 篩選 → 畫清單 → 畫預覽
   preview_pane.sh         右窗格：從 fifo 讀什麼就印什麼
   dispatch.sh             在待辦的 window 裡啟動 agent 並把內容送進去
+  home.sh                 回工作區（給全域按鍵用；選單裡的 C-o 走同一套判斷）
   add.sh                  從 shell 新增一則
   backup.sh restore.sh    匯出／還原（唯一的救援手段）
   migrate.sh              舊版 action-items 的資料搬過來
@@ -98,6 +99,10 @@ trap 執行完會繼續往下跑。只寫 `trap cleanup HUP` 等於把「終端�
 
 `set -w` / `set -p` 都會被 tmux 悄悄轉成 session。沒還原的話整個 session
 從此跳過 root 表，使用者的 `C-p` / `C-t` / `C-d` 全部失效，而且看不出原因。
+
+同一件事的另一面：選單開著的時候 key-table 是 `agent-backlog`，所以**任何想在
+選單裡也生效的全域按鍵，兩張表都要綁**（`agent-backlog.tmux` 的 `home_key`）。
+只綁 root 的話會變成「在待辦裡按有效、在選單裡按沒效」—— 使用者只會覺得時靈時不靈。
 
 ### 9. 不要用空字串當 tmux 的 target
 
