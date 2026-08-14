@@ -19,22 +19,20 @@ highlighted code, scrollable, CJK-aware — written in awk, with nothing install
 Zero dependencies. No database, no JSON store, no Node, no Python, no `fzf`, no `jq`.
 Just tmux and POSIX tools you already have.
 
-![A selected item that has not been dispatched](assets/demo.svg)
+![A selected item that has not been dispatched](assets/demo.png)
 
 <sub>**Before dispatch.** The whole right side is what you wrote — markdown, tables,
-sequence diagrams, CJK widths lining up.</sub>
+sequence diagrams, widths lining up.</sub>
 
-![A selected item that is running](assets/demo-running.svg)
+![A selected item that is running](assets/demo-running.png)
 
 <sub>**After dispatch.** Same screen; the bottom half splits itself off and mirrors
 what that agent is doing right now — no switching over, no waiting for it to report
 back. It folds away by itself when the agent stops, restoring the view above.</sub>
 
-<sub>Neither is a screenshot — the SVG is generated from the real output of `list.awk`
-and `md.awk` (`tools/make-assets.sh`), so every glyph sits exactly where the terminal
-puts it. Regenerate after changing a renderer. The bottom region is a `tmux
-capture-pane` of a **real** dispatched agent taking this codebase apart (only the line
-with spend and rate-limit numbers was removed).</sub>
+<sub>Both are real screenshots — same terminal, same session, the only difference is
+which item is selected. Only the tmux status line and the usage/spend line were
+cropped off.</sub>
 
 ---
 

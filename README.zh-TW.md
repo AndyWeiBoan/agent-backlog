@@ -4,7 +4,8 @@
 
 繁體中文 · [English](README.md)
 
-> 介面預設是英文。要中文請設 `set -g @agent_backlog_lang zh-TW`（下圖就是中文版）。
+> 介面預設是英文（下面兩張圖就是預設的樣子）。要中文請設
+> `set -g @agent_backlog_lang zh-TW` —— 清單、提示列、訊息都會跟著換。
 
 這不是一份提醒事項，是一塊**派工板**：每一則待辦本身就帶著執行它的 prompt，
 按一個鍵就變成一個活著的 Claude Code 實例，在它自己的 tmux window 裡工作 ——
@@ -19,19 +20,17 @@
 零依賴。沒有資料庫、沒有 JSON 檔、沒有 Node、沒有 Python、不需要 `fzf`、不需要 `jq`。
 只用 tmux 和你機器上本來就有的 POSIX 工具。
 
-![選中一則還沒派工的](assets/demo-zh.svg)
+![選中一則還沒派工的](assets/demo.png)
 
-<sub>**還沒派工。** 整個右側都是你寫的內容 —— markdown、表格、時序圖，中文寬度都對得齊。</sub>
+<sub>**還沒派工。** 整個右側都是你寫的內容 —— markdown、表格、時序圖，寬度都對得齊。</sub>
 
-![選中一則正在跑的](assets/demo-running-zh.svg)
+![選中一則正在跑的](assets/demo-running.png)
 
 <sub>**派工之後。** 同一個畫面，下半部自己切出來，即時照著那個 agent 在做什麼 ——
 不用切過去，也不用等它回報。它跑完就自己收掉，還原成上面那張的樣子。</sub>
 
-<sub>兩張都不是截圖 —— SVG 是拿 `list.awk` 與 `md.awk` 的真實輸出轉出來的
-（`tools/make-assets.sh`），所以每個字都在終端機會擺的那一格。改了 renderer 之後跑一次就更新。
-下半部那塊是 `tmux capture-pane` 從一個**真的**派工出去、正在拆解這份 codebase 的 agent
-抓下來的畫面（只拿掉了那行含花費與額度的用量統計）。</sub>
+<sub>兩張都是真的截圖，同一個終端機、同一個 session，差別只有選中哪一則。
+只裁掉了最底下的 tmux 狀態列與那行用量統計。</sub>
 
 ---
 
