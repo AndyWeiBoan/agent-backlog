@@ -42,10 +42,25 @@ while :; do
         # \033[H 覆蓋式重畫 + 每行 \033[K + 收尾 \033[J。
         # 用 \033[2J 清空是肉眼看得到的一閃，每秒閃一次會很煩。
         { printf '\033[H'
+          # ⚠️ 內部的空行一定要留著。Claude Code 的版面是靠空行撐開的
+          # （訊息之間的間隔、輸入框上下的留白），濾掉之後畫面會被壓扁，
+          # 跟走進去看到的對不起來。實測 14 行會變成 10 行。
+          #
+          # 只砍**尾端**的空白列：來源的可見畫面等於它整格的高度，
+          # 內容只有前幾行時後面全是空的，照單全收的話鏡像會是一整片空白。
+          #
+          # 判斷「這行有沒有東西」要先把 SGR 逃逸碼拿掉 ——
+          # capture-pane -e 的空行其實含逃逸碼，直接用 NF 判斷會是 1。
+          # 逃逸字元用 sprintf 產生，不要寫成 regex 字面值（三種 awk 解讀不一致）。
           tmux capture-pane -p -e -t "$t" 2>/dev/null \
-            | awk 'NF { buf[++n] = $0 }
-                   END { s = (n > H ? n - H + 1 : 1)
-                         for (i = s; i <= n; i++) printf "%s\033[K\n", buf[i] }' H="$h"
+            | awk -v H="$h" '
+                BEGIN { RE = sprintf("%c", 27) "\\[[0-9;?]*[a-zA-Z]" }
+                { raw[++n] = $0
+                  t = $0; gsub(RE, "", t); gsub(/[ \t]+$/, "", t)
+                  if (t != "") last = n }
+                END { if (last == 0) last = n
+                      s = (last > H ? last - H + 1 : 1)
+                      for (i = s; i <= last; i++) printf "%s\033[K\n", raw[i] }'
           printf '\033[J'
         } 2>/dev/null
     fi
