@@ -9,6 +9,10 @@ Not a list of reminders. A **dispatch board**: each item carries the prompt that
 runs it, and one keystroke turns it into a live Claude Code instance working in its
 own tmux window — which you can walk into and take over at any moment.
 
+**And you can watch it work without walking in.** Select an item that is running and
+the bottom of the preview mirrors that agent's screen live — your notes on top, what
+it is doing right now underneath.
+
 Items are real notes, so the preview renders them properly: markdown, syntax-
 highlighted code, scrollable, CJK-aware — written in awk, with nothing installed.
 
@@ -19,7 +23,9 @@ Just tmux and POSIX tools you already have.
 
 <sub>Not a screenshot — the SVG is generated from the real output of `list.awk` and
 `md.awk` (`tools/make-assets.sh`), so every glyph sits exactly where the terminal
-puts it. Regenerate it after changing a renderer.</sub>
+puts it. Regenerate it after changing a renderer. The bottom-right region is a
+`tmux capture-pane` of a **real** dispatched agent taking this codebase apart (only
+the line with spend and rate-limit numbers was removed).</sub>
 
 ---
 
@@ -54,6 +60,9 @@ see its screen, you can't type into it, and closing your client is awkward.
 
 Here, a dispatched agent runs in **a tmux window like any other**. That means:
 
+- **You can watch without attaching.** Select a running item and the bottom of the
+  preview mirrors its screen live — the list, the notes you wrote, and what it is
+  doing right now, all on one screen
 - **You can attach.** Press `Enter` and you're in its session, typing to it directly
 - **Your agent can look.** `peek` captures the same screen you'd see
 - **Status is observed, not recorded.** `list` reports what's actually running in

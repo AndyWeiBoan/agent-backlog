@@ -27,16 +27,33 @@ def clip(s, cols):
         out.append(s[i]); w += cw; i += 1
     return ''.join(out), w
 
-LEFT_COLS = 46
-left  = open(sys.argv[1], encoding='utf-8').read().split('\n')
-right = open(sys.argv[2], encoding='utf-8').read().split('\n')
-left  = [l.rstrip('\r') for l in left]
-right = [l.rstrip('\r') for l in right]
-rows = max(len(left), len(right))
+LEFT_COLS  = 46
+RIGHT_COLS = 80
+ROWS       = 38      # 整張圖的高度
+MIRROR     = 14      # 有第三個檔案時，右下鏡像區佔幾列（含分隔線）
+
+def load(p):
+    return [l.rstrip('\r') for l in open(p, encoding='utf-8').read().split('\n')]
+
+left  = load(sys.argv[1])
+right = load(sys.argv[2])
+# 第三個參數 = 鏡像區的內容（真的 capture-pane 抓下來的 agent 畫面）。
+# 給了就把右邊切成上下兩塊，模擬 sync_mirror 開出下半部的樣子。
+mirror = load(sys.argv[3]) if len(sys.argv) > 3 else None
+
+if mirror is not None:
+    top = ROWS - MIRROR
+    bar = '\x1b[38;5;240m' + '─' * RIGHT_COLS + '\x1b[0m'
+    # 鏡像區靠下對齊：真的鏡像窗格顯示的是來源畫面的**末尾**（輸入框在最下面）
+    m = mirror[-(MIRROR - 1):] if len(mirror) > MIRROR - 1 else \
+        [''] * (MIRROR - 1 - len(mirror)) + mirror
+    right = (right[:top] + [''] * max(0, top - len(right))) + [bar] + m
+
 res = []
-for i in range(rows):
+for i in range(ROWS):
     a = left[i]  if i < len(left)  else ''
     b = right[i] if i < len(right) else ''
     a, w = clip(a, LEFT_COLS)
-    res.append(f"{a}\x1b[0m{' ' * (LEFT_COLS - w)}\x1b[38;5;240m│\x1b[0m {b}")
+    b, _ = clip(b, RIGHT_COLS)
+    res.append(f"{a}\x1b[0m{' ' * (LEFT_COLS - w)}\x1b[38;5;240m│\x1b[0m {b}\x1b[0m")
 sys.stdout.write('\n'.join(res))

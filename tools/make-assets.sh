@@ -13,13 +13,15 @@ T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 
 for lang in en zh; do
-    LC_ALL=C awk -v q= -v cur=2 -v w=46 -v h=34 -v total=8 -v scope=session \
+    LC_ALL=C awk -v q= -v cur=2 -v w=46 -v h=38 -v total=8 -v scope=session \
         -v lang="$lang" -v mf=/dev/null \
         -f "$ROOT/scripts/width.awk" -f "$ROOT/scripts/list.awk" \
         "$DIR/items.tsv" > "$T/left.$lang"
 done
 
-{ printf '\033[2m@339\033[0m\n\n'
+# id 要跟左邊選中的那一列一致（items.tsv 第 2 列 @355，狀態 running）——
+# 圖的重點就是「選中的那則在跑，所以下半部照出它的畫面」。
+{ printf '\033[2m@355\033[0m\n\n'
   LC_ALL=C awk -v w=80 \
       -f "$ROOT/scripts/width.awk" -f "$ROOT/scripts/graph.awk" \
       -f "$ROOT/scripts/seq.awk"   -f "$ROOT/scripts/flow.awk" \
@@ -27,8 +29,12 @@ done
     | awk 'NR == 1 && $0 == "" { next } { print }'
 } > "$T/right"
 
+# 第三個參數是鏡像區。mirror.ansi 是 `tmux capture-pane -e` 從一個**真的**
+# 派工出去的 agent 抓下來的畫面（已經拿掉那行含花費與額度的用量統計）。
+# 存成固定素材而不是每次現抓 —— 不然重產這張圖就得先派一個 agent 出去。
 for lang in en zh; do
-    python3 "$DIR/compose.py" "$T/left.$lang" "$T/right" > "$T/frame.$lang"
+    python3 "$DIR/compose.py" "$T/left.$lang" "$T/right" "$DIR/mirror.ansi" \
+        > "$T/frame.$lang"
 done
 python3 "$DIR/ansi2svg.py" < "$T/frame.en" > "$ROOT/assets/demo.svg"
 python3 "$DIR/ansi2svg.py" < "$T/frame.zh" > "$ROOT/assets/demo-zh.svg"
