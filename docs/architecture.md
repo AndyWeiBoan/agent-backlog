@@ -15,6 +15,7 @@ scripts/
   open.sh                 開選單（每個 session 一份）
   chooser.sh              左窗格主迴圈：讀鍵 → 篩選 → 畫清單 → 畫預覽
   preview_pane.sh         右窗格：從 fifo 讀什麼就印什麼
+  mirror.sh               右下窗格：把選中那則的畫面即時照過來（見規則 15）
   dispatch.sh             在待辦的 window 裡啟動 agent 並把內容送進去
   home.sh                 回工作區（給全域按鍵用；選單裡的 C-o 走同一套判斷）
   add.sh                  從 shell 新增一則
@@ -140,6 +141,28 @@ tmux 的當前 window 是記 index 的。`-d` 不解決這件事（它只是換�
 寫死過一次 96，但長版其實是 158（中）／173（英）欄 ——
 96～172 欄的窗格一路看到被切一半的提示。
 只有最短的那版要自己保證 ≤ 40（`chooser.sh` 允許的最小窗格）。
+
+### 15. 鏡像窗格只能垂直切，而且不要自己算截斷
+
+`sync_mirror` 用 `split-window -v`。**水平切會改變預覽的寬度**，
+而 `md.awk` 的表格與 code block 框線是按寬度算的 —— `measure()` 會發現寬度變了，
+把整批 render 快取丟掉重畫。垂直切只動高度，快取全部有效。
+
+截斷交給終端機（`mirror.sh` 關掉 DECAWM），不要自己按顯示寬度切：
+`capture-pane -e` 的輸出夾著 SGR 逃逸碼，逐欄截斷得先解析它們，
+否則不是把顏色切壞就是把逃逸碼算進欄數。
+
+另外 `capture-pane` 拿到的是來源**已經排版好的格線**，不會為了這裡的寬度重排。
+所以來源比鏡像寬的話右邊就是會被切掉 —— 這是機制本身的上限，不是 bug。
+
+### 16. `sync_mirror` 動到版面時一定要強迫重畫
+
+高度變了但內容沒重印的話，上半部的 copy-mode 還停在舊高度算出來的捲動範圍。
+`draw_preview` 是「先 sync 再寫內容」所以沒事；`poll` 不寫內容，
+那邊改完版面一定要 `LAST_ID=""; DIRTY=1`。
+
+驗證捲動**不能用 `capture-pane`** —— 它抓的是底層螢幕，不是 copy-mode 正在顯示的畫面。
+要看 `#{scroll_position}`（等於 `#{history_size}` 就是停在頂端）。
 
 ## 改完之後要驗什麼
 

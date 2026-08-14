@@ -102,6 +102,13 @@ check. So the preview isn't a plain-text dump:
   (`C-f`/`C-b`), with tmux's own `[n/m]` position indicator
 - **Live** — the list and the preview refresh themselves every few seconds, so you
   watch a dispatched agent tick its checklist off without touching the keyboard
+- **When something is running inside the selected item, the bottom of the preview
+  mirrors its screen live** — you see what the dispatched agent is doing without
+  switching to it, and the top half still scrolls. It opens and closes itself: it
+  appears when that item starts running and folds away when it stops, restoring the
+  full-height preview. "Running" is observed from `pane_current_command`, not read
+  from a status field, so `top` you started there yourself shows up too. Set
+  `@agent_backlog_mirror_pane off` to disable
 - **CJK-correct.** Wrapping is delegated to tmux's copy-mode, so double-width
   characters land where they should
 
@@ -268,6 +275,7 @@ Status is an arbitrary string; anything custom (say `review`) falls back to ligh
 | `@agent_backlog_key` | `A` | key after `prefix` |
 | `@agent_backlog_root_key` | — | prefix-less keys, space separated |
 | `@agent_backlog_home_key` | — | back-to-workspace key; bound in both key tables |
+| `@agent_backlog_mirror_pane` | `on` | `off` = never split the preview to mirror a running item |
 | `@agent_backlog_no_key` | — | `on` = bind nothing, do it yourself |
 | `@agent_backlog_scope` | `session` | `session` or `global` |
 | `@agent_backlog_compat` | — | `on` = also read legacy `@prompt` / `@status` |

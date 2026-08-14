@@ -24,12 +24,10 @@ id=${1:-}
 # 「在不在跑」不能比對 pane_current_command = claude ——
 # 實測 Claude Code 的行程名稱是版本字串（例如 2.1.220），不是 "claude"。
 # 改成反過來判斷：只要不是 shell，就當作有東西在跑。
-is_shell() {
-    case ${1:-} in
-        sh|ash|dash|bash|zsh|fish|ksh|tcsh|csh|login) return 0 ;;
-        *) return 1 ;;
-    esac
-}
+# 這份名單只能有一個定義（lib.sh 的 ab_is_shell）——
+# 選單的鏡像窗格也靠它判斷「這則在不在跑」，兩邊分歧的話會出現
+# 「清單說在跑但派工說沒在跑」這種對不起來的狀況。
+is_shell() { ab_is_shell "${1:-}"; }
 
 shell_before=$(tmux display -p -t "$id" '#{pane_current_command}' 2>/dev/null)
 if ! is_shell "$shell_before"; then

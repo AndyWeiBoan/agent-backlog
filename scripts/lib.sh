@@ -11,6 +11,7 @@ K_RETURN="@${PREFIX}_return"     # 開選單之前所在的 window，取消時�
 K_HOME="@${PREFIX}_home"         # 最後一次「從不是待辦的 window」開選單的地方
                                  # 跟 K_RETURN 不一樣，見 open.sh 的說明
 K_WIDTH="@${PREFIX}_width"       # 左窗格寬度，記住使用者調過的
+K_MIRROR="@${PREFIX}_mirror"     # 鏡像窗格現在該照哪一個 window（存在選單那個 window 上）
 
 # 欄位分隔符用 tab。
 # 原本用 ASCII unit separator (0x1F)，但 tmux 3.4 會把控制字元逃逸成字面的
@@ -47,6 +48,23 @@ ab_alive() {
 # 幾乎一定就是他原本工作的地方（多半是 index 0 那個 shell 或 agent）。
 #
 # 欄位順序把 window_name 放最後 —— 標題是使用者寫的，可能含分隔符。
+# 那個 window 裡「有東西在跑」嗎（不是停在 shell 提示字元）。
+#
+# ⚠️ 不能比對 pane_current_command = claude：實測 Claude Code 的行程名稱是
+# 版本字串（例如 2.1.220），不是 claude。所以反過來判斷 —— 不是 shell 就當作在跑。
+# 這也是 README 說的「狀態是觀察來的，不是記錄的」：@agent_backlog_status 會過期
+# （agent 做完了狀態還停在 running），這一支不會。
+ab_is_shell() {
+    case ${1:-} in
+        sh|ash|dash|bash|zsh|fish|ksh|tcsh|csh|login) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+ab_busy() {
+    _c=$(tmux display -p -t "${1:-}" '#{pane_current_command}' 2>/dev/null)
+    [ -n "$_c" ] && ! ab_is_shell "$_c"
+}
+
 ab_workspace() {
     _s=${1:-}
     [ -z "$_s" ] && return 1
@@ -94,6 +112,11 @@ case $AB_LANG in zh|zh-TW|zh_TW) AB_LANG=zh ;; *) AB_LANG=en ;; esac
 
 AB_SCOPE=$(tmux show-options -gqv "@${PREFIX}_scope" 2>/dev/null)
 [ -z "$AB_SCOPE" ] && AB_SCOPE=session
+
+# 選中那則裡面有東西在跑的時候，預覽窗格切下半部出來照它的畫面。
+# 設成 off 就完全不開那一格。
+AB_MIRROR=$(tmux show-options -gqv "@${PREFIX}_mirror_pane" 2>/dev/null)
+[ -z "$AB_MIRROR" ] && AB_MIRROR=on
 
 # 派工時在那個 window 裡打什麼指令。預設 claude。
 #

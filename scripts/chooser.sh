@@ -39,6 +39,9 @@ cleanup() {
     for _hk in client-resized client-attached client-detached after-resize-pane; do
         tmux set-hook -t "$SESS" -u "$_hk" 2>/dev/null
     done
+    # 鏡像窗格會跟著 window 一起死，但那個 option 是寫在 window 上的 ——
+    # 留著的話下次在同一個 window 開選單會先照到一個舊目標。
+    tmux set-option -w -t "$MYWIN" -u "$K_MIRROR" 2>/dev/null
     rm -rf "$TMP"
 }
 # HUP 一定要攔：tmux kill-window 送的就是 SIGHUP，漏掉的話收尾完全不會跑
@@ -196,8 +199,12 @@ tmux set-hook -t "$SESS" after-resize-pane "send-keys -t $LPANE C-l"
 # 所以不擋來源，改成「跑過去就馬上彈回來」。
 # 條件限定在我們這個 window 的預覽窗格，不會影響 session 裡其他 window。
 # 不會無限迴圈：彈回去之後 active pane 就不是它了，條件不成立。
+#
+# 鏡像窗格（見下面的 sync_mirror）也要一起擋 —— 它同樣不讀鍵。
+# 條件寫成「不是左窗格就彈回去」而不是逐一列舉 pane_id，
+# 因為鏡像窗格是動態開關的，列舉的話它的 id 每次都不一樣。
 tmux set-hook -t "$SESS" window-pane-changed \
-    "if -F '#{&&:#{==:#{window_id},$MYWIN},#{==:#{pane_id},$RPANE}}' \
+    "if -F '#{&&:#{==:#{window_id},$MYWIN},#{!=:#{pane_id},$LPANE}}' \
         'select-pane -t $LPANE'" 2>/dev/null
 
 # ── 狀態 ──────────────────────────────────────────────
@@ -212,6 +219,8 @@ PW=0
 TOOSMALL=0
 NEEDMEASURE=0
 SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
+MPANE=""                # 鏡像窗格的 pane_id，沒開的時候是空的
+MIRROR_CHANGED=0        # sync_mirror 這次有沒有動到版面（見那支的說明）
 PREV_EMPTY=1            # 預覽窗格現在是不是空的。
                         # 不能用 LAST_ID 代替 —— Tab / C-r / resize 都會把
                         # LAST_ID 清掉來強制重畫，那樣就判斷不出「畫面上還有沒有東西」。
@@ -311,10 +320,17 @@ draw_preview() {
         # 早期版本這裡直接 return，預覽就停在上一則不動 —— 是回報過的 bug。
         [ "$PREV_EMPTY" = 0 ] && clear_preview
         LAST_ID=""
+        sync_mirror ""
         return
     fi
-    [ "$id" = "$LAST_ID" ] && return       # 選中項沒變就不用重畫
+    # 選中項沒變就不用重畫。
+    #
+    # ⚠️ 這裡刻意不叫 sync_mirror。draw_preview 每按一鍵都會跑，而 sync_mirror
+    # 要兩三次 tmux round trip —— 那是每鍵成本裡很大一塊（同 measure 的理由）。
+    # 「那則剛開始跑／剛跑完」交給 3 秒一次的 poll 處理就夠了。
+    [ "$id" = "$LAST_ID" ] && return
     LAST_ID=$id
+    sync_mirror "$id"
 
     f="$CACHE/${id#@}"
     [ -f "$f" ] || render_item "$id" > "$f"
@@ -336,6 +352,48 @@ draw_preview() {
 }
 
 scroll() { tmux send-keys -t "$RPANE" -X "$1" 2>/dev/null; }
+
+# ── 鏡像窗格 ──────────────────────────────────────────
+# 選中的那則裡面有東西在跑的時候，把預覽窗格切下半部出來照它的畫面。
+#
+# 「有沒有在跑」用觀察的（ab_busy 看 pane_current_command），不是讀
+# @agent_backlog_status —— 那個值會過期（agent 做完了狀態還停在 running），
+# 而且使用者自己在那個 window 裡開東西也該照得到。
+#
+# ⚠️ 換選項時只改 window option，不殺掉重開這一格。
+# 殺掉重開會讓上半部的預覽跟著 resize，每按一次 ↑↓ 就是一次可見的重排。
+# 開關只發生在「有在跑 ↔ 沒在跑」的交界，那本來就少。
+#
+# ⚠️ 一定要垂直切（-v）。水平切會改變預覽的**寬度**，md.awk 的表格與
+# code block 框線是按寬度算的，快取會整批失效然後重畫（見 measure）。
+#
+# 動到版面時會把 MIRROR_CHANGED 設成 1，由呼叫端決定要不要重畫：
+# draw_preview 是「先 sync 再寫內容」，寫的時候高度已經是最終值，所以不用理它；
+# poll 不會寫內容，所以那邊改完高度一定要強制重畫一次 ——
+# 否則上半部的 copy-mode 還停在舊高度算出來的捲動範圍，捲不到底或捲過頭。
+sync_mirror() {
+    [ "$AB_MIRROR" = off ] && return
+    _t=$1
+    if [ -n "$_t" ] && ab_busy "$_t"; then
+        tmux set-option -w -t "$MYWIN" "$K_MIRROR" "$_t" 2>/dev/null
+        if ! ab_alive "$MPANE"; then
+            MPANE=$(tmux split-window -v -l 40% -P -F '#{pane_id}' -t "$RPANE" \
+                    "sh '$DIR/mirror.sh' '$MYWIN'" 2>/dev/null)
+            # 切出來之後焦點會落在新窗格上，要自己搶回來 ——
+            # window-pane-changed 那個 hook 也會彈，但這裡先做才不會閃一下。
+            tmux select-pane -t "$LPANE" 2>/dev/null
+            MIRROR_CHANGED=1
+        fi
+    else
+        if ab_alive "$MPANE"; then
+            tmux kill-pane -t "$MPANE" 2>/dev/null
+            tmux select-pane -t "$LPANE" 2>/dev/null
+            MIRROR_CHANGED=1
+        fi
+        MPANE=""
+        tmux set-option -w -t "$MYWIN" -u "$K_MIRROR" 2>/dev/null
+    fi
+}
 
 # 刪除。自己畫確認提示，不用 tmux 的 confirm-before ——
 # 那支需要一個明確的 target-client，從 pane 裡呼叫時解析不到（"no current client"）。
@@ -457,6 +515,15 @@ poll() {
         else
             rm -f "$_f.new"
         fi
+    fi
+
+    # 鏡像窗格的開關放在這裡，不放在 draw_preview ——
+    # 「那則剛開始跑」和「剛跑完」都不會改變選中項，所以只有定期看才抓得到。
+    MIRROR_CHANGED=0
+    sync_mirror "$(selected_id)"
+    if [ "$MIRROR_CHANGED" = 1 ]; then
+        LAST_ID=""      # 高度變了，預覽一定要重印（tmux 不會重排已印出的內容）
+        DIRTY=1
     fi
 }
 
@@ -609,10 +676,6 @@ while :; do
     if [ "$NEEDMEASURE" = 1 ]; then
         while [ "$NEEDMEASURE" = 1 ]; do
             NEEDMEASURE=0
-SCOPE=$AB_SCOPE         # 可用 Tab 即時切換，不影響設定檔
-PREV_EMPTY=1            # 預覽窗格現在是不是空的。
-                        # 不能用 LAST_ID 代替 —— Tab / C-r / resize 都會把
-                        # LAST_ID 清掉來強制重畫，那樣就判斷不出「畫面上還有沒有東西」。
             stty min 0 time 1
             more=$(readbytes)
             stty min 0 time 30

@@ -93,6 +93,11 @@ flowchart LR
   附 tmux 自己的 `[n/m]` 位置指示器
 - **會自己更新** —— 清單與預覽每幾秒自動比對一次，所以派工出去的 agent
   把 checklist 一項項勾掉時，你不用碰鍵盤就看得到
+- **選中的那則裡面有東西在跑時，預覽下半部會即時照出它的畫面** ——
+  不用切過去就看得到派出去的 agent 在幹嘛。上半部照樣可以捲。
+  它自己開自己關：那則開始跑就出現，跑完就收掉，還原成整頁預覽。
+  「有沒有在跑」是觀察 `pane_current_command` 得到的，不是讀狀態欄位 ——
+  所以你自己在那個 window 裡開 `top` 也照得到。設 `@agent_backlog_mirror_pane off` 可關掉
 - **中文寬度正確。** 折行交給 tmux 的 copy-mode，雙寬字元不會跑位
 
 全部是 **1,607 行 awk**，不需要安裝任何 renderer —— 不用 `glow`、不用 `bat`、
@@ -247,6 +252,7 @@ sh scripts/restore.sh <檔名> [session]     # 同名的會跳過，不覆蓋
 | `@agent_backlog_key` | `A` | `prefix` 之後的鍵 |
 | `@agent_backlog_root_key` | — | 不需要 prefix 的鍵，空白分隔可多個 |
 | `@agent_backlog_home_key` | — | 回工作區的鍵，兩張 key table 都會綁 |
+| `@agent_backlog_mirror_pane` | `on` | `off` = 不要為了照正在跑的畫面而切分預覽 |
 | `@agent_backlog_no_key` | — | `on` = 完全不綁，自己來 |
 | `@agent_backlog_scope` | `session` | `session` 或 `global` |
 | `@agent_backlog_compat` | — | `on` = 連舊版的 `@prompt` / `@status` 一起認 |
