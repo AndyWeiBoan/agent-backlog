@@ -40,32 +40,58 @@ def parse(lines):
             m = SGR.match(line, pos)
             if m:
                 flush()
-                for p in (m.group(1) or "0").split(";"):
-                    p = p or "0"; v = int(p)
+                # ⚠️ 一定要「按順序消耗」參數，不能各掃一遍。
+                # 38;5;N 與 48;5;N 的 N 是**色號**，不是另一個 SGR 指令 ——
+                # 分開掃的話 \033[1;38;5;42m 裡的 42 會被當成「綠色背景」，
+                # 於是每個字底下鋪一塊綠底、字又是綠的，標題就整個消失。
+                # （實際發生過：md.awk 的 ## 標題在圖上變成一塊綠方塊。）
+                # 同理 38;5;9 會被誤判成刪除線、38;5;1 成粗體、38;5;2 成 dim。
+                pl = [int(p or 0) for p in (m.group(1) or "0").split(";")]
+                i = 0
+                while i < len(pl):
+                    v = pl[i]
+                    if v in (38, 48) and i + 1 < len(pl):
+                        if pl[i+1] == 5 and i + 2 < len(pl):
+                            c = xterm256(pl[i+2]); i += 3
+                        elif pl[i+1] == 2 and i + 4 < len(pl):
+                            c = "#%02x%02x%02x" % (pl[i+2], pl[i+3], pl[i+4]); i += 5
+                        else:
+                            i += 1; continue
+                        if v == 38: fg = c
+                        else:       bg = c
+                        continue
                     if v == 0: fg, bg, bold, dim, strike = FG, None, False, False, False
                     elif v == 1: bold = True
                     elif v == 2: dim = True
                     elif v == 9: strike = True
                     elif v == 7: fg, bg = BG, "#c8c8c8"
+                    elif v == 39: fg = FG
+                    elif v == 49: bg = None
                     elif 30 <= v <= 37: fg = xterm256(v-30)
                     elif 90 <= v <= 97: fg = xterm256(v-90+8)
                     elif 40 <= v <= 47: bg = xterm256(v-40)
-                pl = (m.group(1) or "").split(";")
-                for i, p in enumerate(pl):
-                    if p == "38" and i+2 < len(pl) and pl[i+1] == "5": fg = xterm256(int(pl[i+2]))
-                    if p == "48" and i+2 < len(pl) and pl[i+1] == "5": bg = xterm256(int(pl[i+2]))
+                    elif 100 <= v <= 107: bg = xterm256(v-100+8)
+                    i += 1
                 pos = m.end(); continue
             ch = line[pos]; pos += 1
             if ch == "\x1b":            # 其他 escape：吃掉到字母為止
                 while pos < len(line) and not line[pos].isalpha(): pos += 1
                 pos += 1; continue
-            # ⚠️ 寬字元必須自己一個元素、自己一個 x。
-            # 整段一起放的話，x 是按「顯示格」算的，但瀏覽器不保證把中文渲染成
-            # 剛好兩倍寬 —— 字型一換版面就歪。ASCII 連續段才合併，省元素數。
-            if wide(ord(ch)):
+            # ⚠️ 只有純 ASCII 可以合併成一段，其餘一律自己一個元素、自己一個 x。
+            #
+            # 合併段是靠 textLength 釘寬度的，而 lengthAdjust 預設是 "spacing" ——
+            # 它只調**字距**，不調字形。所以只要那段裡有非 ASCII（字型的
+            # advance 跟 8.4px 不一樣），字就會被拉開或擠在一起：
+            # 方框字元 ─│┌┐ 之間出現縫隙或重疊，看起來就是一團亂碼。
+            # 實際發生過：鏡像區那串 "│─┄┊▼◀▶┌┐└┘├┤┼╭╮╰╯◇" 整個糊掉。
+            #
+            # 逐字放元素檔案會大一點，但每個字都釘在它該在的格子上 ——
+            # 那正是這張圖存在的理由（比截圖精確）。
+            cp = ord(ch)
+            if not (0x20 <= cp <= 0x7E):
                 flush()
                 out.append((r, col, ch, fg, bg, bold, dim, strike))
-                col += 2
+                col += 2 if wide(cp) else 1
             else:
                 if not run: run = [col, []]
                 run[1].append(ch)

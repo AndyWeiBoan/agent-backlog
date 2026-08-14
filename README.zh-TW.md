@@ -19,12 +19,19 @@
 零依賴。沒有資料庫、沒有 JSON 檔、沒有 Node、沒有 Python、不需要 `fzf`、不需要 `jq`。
 只用 tmux 和你機器上本來就有的 POSIX 工具。
 
-![agent-backlog](assets/demo-zh.svg)
+![選中一則還沒派工的](assets/demo-zh.svg)
 
-<sub>這不是截圖 —— SVG 是拿 `list.awk` 與 `md.awk` 的真實輸出轉出來的（`tools/make-assets.sh`），
-所以每個字都在終端機會擺的那一格。改了 renderer 之後跑一次就更新。
-右下那塊是 `tmux capture-pane` 從一個**真的**派工出去、正在拆解這份 codebase 的
-agent 抓下來的畫面（只拿掉了那行含花費與額度的用量統計）。</sub>
+<sub>**還沒派工。** 整個右側都是你寫的內容 —— markdown、表格、時序圖，中文寬度都對得齊。</sub>
+
+![選中一則正在跑的](assets/demo-running-zh.svg)
+
+<sub>**派工之後。** 同一個畫面，下半部自己切出來，即時照著那個 agent 在做什麼 ——
+不用切過去，也不用等它回報。它跑完就自己收掉，還原成上面那張的樣子。</sub>
+
+<sub>兩張都不是截圖 —— SVG 是拿 `list.awk` 與 `md.awk` 的真實輸出轉出來的
+（`tools/make-assets.sh`），所以每個字都在終端機會擺的那一格。改了 renderer 之後跑一次就更新。
+下半部那塊是 `tmux capture-pane` 從一個**真的**派工出去、正在拆解這份 codebase 的 agent
+抓下來的畫面（只拿掉了那行含花費與額度的用量統計）。</sub>
 
 ---
 
