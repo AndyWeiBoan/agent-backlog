@@ -89,6 +89,11 @@ INSTRUCTIONS='共享的待辦清單。使用者與 agent 看到同一份。
 - 不確定現在多長就先用 show 看一眼，不要憑印象追加
 - 純參考資料（對照表、查表）可以長，但標題要看得出那是參考、不是待辦
 
+⚠️ 除了上面的建議值，還有一個**硬上限**：一則約 16 KB（內容是存在 tmux window
+option 上的，而 tmux 對一整條指令有 16 KB 的長度限制）。超過的話 append 會回
+isError 且**內容完全不會變** —— 那時不要重試同一段，要回報這則需要拆開。
+成功的 append 會告訴你這則現在多少 bytes，拿那個數字判斷還剩多少空間。
+
 ## 怎麼寫才讀得下去
 
 1. **前三行就回答「現在什麼狀態、下一步做什麼」。** 結論在前，脈絡在後 ——
@@ -120,7 +125,7 @@ tools_json() {
 {"name":"dispatch","description":"派工：在該 window 啟動獨立的 claude 實例並把內容送進去，狀態轉 running。使用者可以 attach 進去接手。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
 {"name":"peek","description":"capture 該 window 目前的畫面，用來看派出去的進度。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"}},"required":["target"]}},
 {"name":"check","description":"把某一則裡的 checklist 項目打勾／取消打勾。用 index（第幾個 checkbox，1 起算）或 match（子字串）指定哪一個。刻意做成窄工具：只會換 [ ] 與 [x]，不會動到任何其他文字 —— 這個系統沒有 undo。\n\n這是回報進度的首選方式，優先於 append。做完一項就打勾，不要另外 append 一句「已完成 X」——打勾是原地更新，不會把那則撐長；append 會，而且兩邊講同一件事之後使用者還得自己對照。內容裡沒有對應的 checklist 項目時才考慮 append。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"index":{"type":"number","description":"第幾個 checkbox，1 起算"},"match":{"type":"string","description":"用子字串找那一項（沒給 index 時用）"},"done":{"type":"boolean","description":"true = 打勾（預設），false = 取消"}},"required":["target"]}},
-{"name":"append","description":"在某一則的內容尾端追加一段 markdown。刻意只能追加不能覆寫，所以每一次呼叫都是不可逆的——那則會永遠變長一點，而使用者是用眼睛掃這塊板子的。\n\n用之前先確認三件事：(1) 這件事已經寫在內容裡了嗎？是的話不要重複；(2) 能不能改用 check 打勾表示？能的話用 check，不要 append 一句「已完成 X」；(3) 這段會改變使用者的決定嗎？不會就不要寫。\n\n不要拿它做進度回報。「我讀了 A」「我試了 B 但失敗」「接下來看 C」這種過程敘述請不要寫進來——使用者要看過程會自己 attach 進那個 window 或用 peek。該寫的是：結論、還沒解的問題、以及下一步。\n\n寫的時候給結構：一個 ## 小標題起頭，底下用條列，不要一整段散文。一行一個意思，一段連續文字不超過五行。一次寫完，不要拆成好幾次呼叫慢慢加——那會讓那則變成一條流水帳。\n\n先估長度再決定要不要寫。使用者的一個畫面大約 40 行；不確定這則現在多長就先用 show 看一眼。加完之後會超過 80 行的話就不要 append——改成回報「這則已經 N 行，建議拆成 X 和 Y」，或指出前面哪一段已經過期，讓使用者決定。內容不能改寫，所以救不回來的是他，不是你。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"text":{"type":"string","description":"要追加的 markdown。有結構、精簡、只寫會影響決定的東西。加完之後整則不該超過 80 行"}},"required":["target","text"]}},
+{"name":"append","description":"在某一則的內容尾端追加一段 markdown。刻意只能追加不能覆寫，所以每一次呼叫都是不可逆的——那則會永遠變長一點，而使用者是用眼睛掃這塊板子的。\n\n用之前先確認三件事：(1) 這件事已經寫在內容裡了嗎？是的話不要重複；(2) 能不能改用 check 打勾表示？能的話用 check，不要 append 一句「已完成 X」；(3) 這段會改變使用者的決定嗎？不會就不要寫。\n\n不要拿它做進度回報。「我讀了 A」「我試了 B 但失敗」「接下來看 C」這種過程敘述請不要寫進來——使用者要看過程會自己 attach 進那個 window 或用 peek。該寫的是：結論、還沒解的問題、以及下一步。\n\n寫的時候給結構：一個 ## 小標題起頭，底下用條列，不要一整段散文。一行一個意思，一段連續文字不超過五行。一次寫完，不要拆成好幾次呼叫慢慢加——那會讓那則變成一條流水帳。\n\n先估長度再決定要不要寫。使用者的一個畫面大約 40 行；不確定這則現在多長就先用 show 看一眼。加完之後會超過 80 行的話就不要 append——改成回報「這則已經 N 行，建議拆成 X 和 Y」，或指出前面哪一段已經過期，讓使用者決定。內容不能改寫，所以救不回來的是他，不是你。\n\n硬上限約 16 KB（tmux 指令長度限制）。超過會回 isError 且內容完全沒變；成功時回覆會帶上這則現在的 bytes 數。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"text":{"type":"string","description":"要追加的 markdown。有結構、精簡、只寫會影響決定的東西。加完之後整則不該超過 80 行"}},"required":["target","text"]}},
 {"name":"set_status","description":"更新狀態。任意字串，慣例是 pending / running / blocked / done。標成 done 之後那一則會自動沉到清單底部。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"status":{"type":"string"}},"required":["target","status"]}},
 {"name":"set_priority","description":"設定優先度，1..10，越大越先做，預設 1。清單（人看到的和 list 回的）都照這個排序，所以這是「讓某件事浮到最上面」的方法。超出範圍會被夾住。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id"},"priority":{"type":"number","description":"1..10"}},"required":["target","priority"]}},
 {"name":"delete","description":"刪掉一則待辦（會關掉它的 tmux window）。一次只能刪一則，必須指名 target —— 沒有批次、沒有清空。刪之前整則會被塞進 tmux buffer agent_backlog_deleted，所以手滑還有一次機會救（tmux show-buffer -b agent_backlog_deleted）。如果那個 window 裡有東西在跑（包含被 dispatch 出去、正在工作的 claude），會被拒絕 —— 那要先確認它真的可以砍，再用 force。這個系統沒有 undo，所以除非使用者要你刪，不要主動刪；不確定該不該留的話用 set_status 標成 done，讓使用者自己決定。","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"標題或 window_id。不接受萬用字元，一次一則"},"force":{"type":"boolean","description":"true = 連「裡面有東西在跑」也照樣刪。會殺掉那個 pane 裡的行程"}},"required":["target"]}}
@@ -221,7 +226,15 @@ while IFS= read -r line; do
                     else
                         wid=$(tmux new-window -d -n "$title" -P -F '#{window_id}')
                     fi
-                    tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
+                    # 寫不進去就把剛建的 window 收掉 —— 留一則沒有內容的待辦
+                    # 比直接失敗更糟：它會出現在清單上，但打開是空的。
+                    if ! ab_set_prompt "$wid" "$TMP/body"; then
+                        tmux kill-window -t "$wid" 2>/dev/null
+                        printf '沒有新增：內容 %s bytes，超過 tmux 對指令長度的上限（約 16 KB）。請縮短 body。' \
+                            "$(LC_ALL=C wc -c < "$TMP/body" | tr -d ' ')" > "$BUF"
+                        reply_text "$id" "$BUF" 1
+                        continue
+                    fi
                     tmux set-option -w -t "$wid" "$K_STATUS" pending
                     # 優先度選填。JSON number 可能帶小數點（3.0），先切掉。
                     pr=$(get .params.arguments.priority | cut -d. -f1)
@@ -268,9 +281,16 @@ while IFS= read -r line; do
                         awk -v idx="${_idx:-0}" -v match_="$_mt" -v done_="$_dn" \
                             -v rf="$TMP/res" -f "$MCP/check.awk" "$TMP/body" > "$TMP/new"
                         if [ "$(cut -f1 "$TMP/res")" = 1 ]; then
-                            tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/new")"
-                            printf '已更新：%s' "$(cut -f2 "$TMP/res")" > "$BUF"
-                            reply_text "$id" "$BUF"
+                            if ab_set_prompt "$wid" "$TMP/new"; then
+                                printf '已更新：%s' "$(cut -f2 "$TMP/res")" > "$BUF"
+                                reply_text "$id" "$BUF"
+                            else
+                                # 打勾不會讓內容變長，所以走到這裡表示這則本來就
+                                # 已經在上限邊緣（或超過）—— 那個勾寫不進去。
+                                printf '打勾失敗：這則有 %s bytes，已經到 tmux 的指令長度上限（約 16 KB），連原地改寫都寫不回去。這則必須先拆開。' \
+                                    "$(ab_prompt_size "$wid")" > "$BUF"
+                                reply_text "$id" "$BUF" 1
+                            fi
                         else
                             printf '找不到符合的 checklist 項目（index=%s match=%s）' \
                                 "${_idx:-—}" "${_mt:-—}" > "$BUF"
@@ -288,9 +308,19 @@ while IFS= read -r line; do
                         printf '\n' >> "$TMP/body"
                         get .params.arguments.text \
                             | awk '{gsub(/\\n/, "\n"); print}' >> "$TMP/body"
-                        tmux set-option -w -t "$wid" "$K_PROMPT" "$(cat "$TMP/body")"
-                        printf '已追加到 %s' "$wid" > "$BUF"
-                        reply_text "$id" "$BUF"
+                        if ab_set_prompt "$wid" "$TMP/body"; then
+                            printf '已追加到 %s（這則現在 %s bytes）' \
+                                "$wid" "$(ab_prompt_size "$wid")" > "$BUF"
+                            reply_text "$id" "$BUF"
+                        else
+                            # ⚠️ 這裡回 isError 是關鍵。不回的話 agent 會以為寫成功了，
+                            # 而內容其實一個位元組都沒動 —— 這個系統沒有版本歷史，
+                            # 那段字就永久消失。
+                            printf '沒有寫入：這則已經 %s bytes，加上這 %s bytes 會超過 tmux 對指令長度的上限（約 16 KB）。內容完全沒變。不要重試同一段 —— 請改成回報「這則太長，建議拆成 X 和 Y」或指出前面哪一段已經過期，讓使用者決定。' \
+                                "$(ab_prompt_size "$wid")" \
+                                "$(get .params.arguments.text | LC_ALL=C wc -c | tr -d ' ')" > "$BUF"
+                            reply_text "$id" "$BUF" 1
+                        fi
                     fi
                     ;;
                 set_status)

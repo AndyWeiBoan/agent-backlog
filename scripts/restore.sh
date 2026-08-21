@@ -33,10 +33,16 @@ flush() {
         printf '跳過（已存在）%s\n' "$name"
     else
         id=$(tmux new-window -d -t "$SESS" -n "$name" -P -F '#{window_id}')
-        tmux set-option -w -t "$id" "$K_PROMPT" "$(cat "$body")"
-        tmux set-option -w -t "$id" "$K_STATUS" "$st"
-        ab_set_priority "$id" "${pr:-1}"
-        printf '還原 %s -> %s\n' "$name" "$id"
+        # 這是救援路徑，靜默失敗最不能接受 —— 使用者會以為東西回來了。
+        if ! ab_set_prompt "$id" "$body"; then
+            tmux kill-window -t "$id" 2>/dev/null
+            printf '還原失敗（內容 %s bytes 超過 tmux 約 16 KB 的上限）：%s\n' \
+                "$(LC_ALL=C wc -c < "$body" | tr -d ' ')" "$name" >&2
+        else
+            tmux set-option -w -t "$id" "$K_STATUS" "$st"
+            ab_set_priority "$id" "${pr:-1}"
+            printf '還原 %s -> %s\n' "$name" "$id"
+        fi
     fi
     : > "$body"
 }

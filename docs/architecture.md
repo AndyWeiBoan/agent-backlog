@@ -164,6 +164,21 @@ tmux 的當前 window 是記 index 的。`-d` 不解決這件事（它只是換�
 驗證捲動**不能用 `capture-pane`** —— 它抓的是底層螢幕，不是 copy-mode 正在顯示的畫面。
 要看 `#{scroll_position}`（等於 `#{history_size}` 就是停在頂端）。
 
+### 17. 寫內容一定要看回傳值（16 KB 硬上限）
+
+內容存在 tmux window option 上，而 tmux 對**一整條指令**有 16 KB 的長度限制。
+實測這台機器上 `set-option -w -t %NNNN @agent_backlog_prompt <值>` 的值
+最多 16337 bytes，再多一個 byte 就 `command too long`。
+
+危險的是它**靜默**：tmux 回非零，但不看回傳值的話就會回報成功而內容沒動。
+實測過 —— 16201 bytes 的一則追加 600 bytes，MCP 回「已追加」，
+內容一個位元組都沒變。這個系統沒有版本歷史，那段字就永久消失。
+
+所以**所有寫內容的地方都要走 `lib.sh` 的 `ab_set_prompt()`**，
+它是唯一會把失敗傳回去的入口（add / append / check / add.sh / restore.sh 都已改）。
+`add` 與 `restore` 失敗時還要把剛建的 window 收掉 ——
+留一則出現在清單上但打開是空的，比直接失敗更糟。
+
 ## 改完之後要驗什麼
 
 1. **三種 awk 輸出逐位元組相同** —— BWK 20200816（macOS）、gawk、busybox。
