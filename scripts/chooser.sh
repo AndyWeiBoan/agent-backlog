@@ -367,6 +367,11 @@ scroll() { tmux send-keys -t "$RPANE" -X "$1" 2>/dev/null; }
 # ⚠️ 一定要垂直切（-v）。水平切會改變預覽的**寬度**，md.awk 的表格與
 # code block 框線是按寬度算的，快取會整批失效然後重畫（見 measure）。
 #
+# 高度：鏡像佔三分之二。`-l` 是給**新開的那一格**（下面那格）的尺寸。
+# 這個比例是刻意偏向 agent 的畫面 —— 待辦的內容你已經讀過了，
+# 你盯著這個畫面的時候要看的是它現在在幹嘛。上半部剩三分之一，
+# 夠看到標題和開頭幾行；要看完整內容照樣可以捲（C-e/C-y、C-d/C-u）。
+#
 # 動到版面時會把 MIRROR_CHANGED 設成 1，由呼叫端決定要不要重畫：
 # draw_preview 是「先 sync 再寫內容」，寫的時候高度已經是最終值，所以不用理它；
 # poll 不會寫內容，所以那邊改完高度一定要強制重畫一次 ——
@@ -377,7 +382,7 @@ sync_mirror() {
     if [ -n "$_t" ] && ab_busy "$_t"; then
         tmux set-option -w -t "$MYWIN" "$K_MIRROR" "$_t" 2>/dev/null
         if ! ab_alive "$MPANE"; then
-            MPANE=$(tmux split-window -v -l 40% -P -F '#{pane_id}' -t "$RPANE" \
+            MPANE=$(tmux split-window -v -l 67% -P -F '#{pane_id}' -t "$RPANE" \
                     "sh '$DIR/mirror.sh' '$MYWIN'" 2>/dev/null)
             # 切出來之後焦點會落在新窗格上，要自己搶回來 ——
             # window-pane-changed 那個 hook 也會彈，但這裡先做才不會閃一下。
